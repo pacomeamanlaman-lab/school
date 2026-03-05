@@ -7,27 +7,30 @@ import { User, Mail, Phone, Calendar, MapPin } from "lucide-react";
 interface AddStudentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSubmit?: (data: any) => void;
+  student?: any;
 }
 
-export default function AddStudentModal({ isOpen, onClose }: AddStudentModalProps) {
+export default function AddStudentModal({ isOpen, onClose, onSubmit, student }: AddStudentModalProps) {
   const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    dateNaissance: "",
-    genre: "M",
-    classe: "",
-    email: "",
-    phone: "",
-    adresse: "",
-    parentName: "",
-    parentPhone: "",
-    parentEmail: "",
+    firstName: student?.firstName || "",
+    lastName: student?.lastName || "",
+    dateNaissance: student?.dateNaissance || "",
+    genre: student?.genre || "M",
+    classe: student?.classe || "",
+    email: student?.email || "",
+    phone: student?.phone || "",
+    adresse: student?.adresse || "",
+    parentName: student?.parentName || "",
+    parentPhone: student?.parentPhone || "",
+    parentEmail: student?.parentEmail || "",
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Ajouter l'élève à Supabase
-    console.log("Nouvel élève:", formData);
+    if (onSubmit) {
+      onSubmit(student ? { ...student, ...formData } : formData);
+    }
     onClose();
   };
 
@@ -36,7 +39,7 @@ export default function AddStudentModal({ isOpen, onClose }: AddStudentModalProp
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Ajouter un élève" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={student ? "Modifier l'élève" : "Ajouter un élève"} size="lg">
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Informations élève */}
         <div>
@@ -222,7 +225,7 @@ export default function AddStudentModal({ isOpen, onClose }: AddStudentModalProp
             type="submit"
             className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
           >
-            Ajouter l'élève
+            {student ? "Modifier" : "Ajouter l'élève"}
           </button>
         </div>
       </form>

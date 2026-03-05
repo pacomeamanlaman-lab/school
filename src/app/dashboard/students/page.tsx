@@ -66,8 +66,10 @@ export default function StudentsPage() {
   const [selectedClass, setSelectedClass] = useState("all");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [students, setStudents] = useState(studentsData);
+  const [editingStudent, setEditingStudent] = useState<typeof studentsData[0] | null>(null);
 
-  const filteredStudents = studentsData.filter((student) => {
+  const filteredStudents = students.filter((student) => {
     const matchSearch =
       student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -75,6 +77,33 @@ export default function StudentsPage() {
     const matchClass = selectedClass === "all" || student.classe === selectedClass;
     return matchSearch && matchClass;
   });
+
+  const handleAddStudent = (newStudent: any) => {
+    const student = {
+      id: students.length + 1,
+      matricule: `EL2024${String(students.length + 1).padStart(3, '0')}`,
+      firstName: newStudent.firstName,
+      lastName: newStudent.lastName,
+      classe: newStudent.classe,
+      dateNaissance: newStudent.dateNaissance,
+      genre: newStudent.genre,
+      status: "active",
+    };
+    setStudents([...students, student]);
+    setIsAddModalOpen(false);
+  };
+
+  const handleEditStudent = (updatedStudent: any) => {
+    setStudents(students.map(s => s.id === updatedStudent.id ? updatedStudent : s));
+    setEditingStudent(null);
+  };
+
+  const handleDeleteStudent = (id: number) => {
+    if (confirm("Êtes-vous sûr de vouloir supprimer cet élève ?")) {
+      setStudents(students.filter(s => s.id !== id));
+      setOpenMenuId(null);
+    }
+  };
 
   const handleExportExcel = () => {
     const studentsForExport = filteredStudents.map((student) => ({
@@ -233,10 +262,16 @@ export default function StudentsPage() {
                       >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary">
+                      <button
+                        onClick={() => setEditingStudent(student)}
+                        className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
+                      >
                         <Edit className="w-4 h-4" />
                       </button>
-                      <button className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger">
+                      <button
+                        onClick={() => handleDeleteStudent(student.id)}
+                        className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger"
+                      >
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
@@ -272,7 +307,18 @@ export default function StudentsPage() {
       <AddStudentModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleAddStudent}
       />
+
+      {/* Modal d'édition d'élève */}
+      {editingStudent && (
+        <AddStudentModal
+          isOpen={!!editingStudent}
+          onClose={() => setEditingStudent(null)}
+          onSubmit={handleEditStudent}
+          student={editingStudent}
+        />
+      )}
     </div>
   );
 }

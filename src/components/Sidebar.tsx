@@ -16,6 +16,7 @@ import {
   ClipboardList,
   FileText,
   Calendar,
+  UsersRound,
 } from "lucide-react";
 
 const menuItems = [
@@ -38,6 +39,11 @@ const menuItems = [
     title: "Personnel",
     icon: UserCog,
     href: "/dashboard/staff",
+  },
+  {
+    title: "Parents",
+    icon: UsersRound,
+    href: "/dashboard/parents",
   },
   {
     title: "Emplois du temps",
