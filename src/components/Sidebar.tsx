@@ -12,6 +12,8 @@ import {
   LogOut,
   ChevronLeft,
   GraduationCap,
+  CheckSquare,
+  ClipboardList,
 } from "lucide-react";
 
 const menuItems = [
@@ -34,6 +36,16 @@ const menuItems = [
     title: "Personnel",
     icon: UserCog,
     href: "/dashboard/staff",
+  },
+  {
+    title: "Absences",
+    icon: CheckSquare,
+    href: "/dashboard/absences",
+  },
+  {
+    title: "Notes",
+    icon: ClipboardList,
+    href: "/dashboard/notes",
   },
   {
     title: "Paramètres",
