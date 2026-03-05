@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Search, Filter, Mail, Phone, Edit, Trash2, Eye, BookOpen, School } from "lucide-react";
 import AddStaffModal from "@/components/AddStaffModal";
 
@@ -75,6 +76,7 @@ const staffData = [
 ];
 
 export default function StaffPage() {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRole, setSelectedRole] = useState("all");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -240,7 +242,10 @@ export default function StaffPage() {
 
             {/* Actions */}
             <div className="flex items-center gap-2 pt-4 border-t border-border">
-              <button className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-accent border border-input rounded-lg transition text-sm font-medium">
+              <button
+                onClick={() => router.push(`/dashboard/staff/${person.id}`)}
+                className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-accent border border-input rounded-lg transition text-sm font-medium"
+              >
                 <Eye className="w-4 h-4" />
                 Voir
               </button>

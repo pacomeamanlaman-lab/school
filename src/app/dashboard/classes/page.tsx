@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Search, Users, User, Edit, Trash2, Eye } from "lucide-react";
 import AddClassModal from "@/components/AddClassModal";
 
@@ -69,6 +70,7 @@ const classesData = [
 ];
 
 export default function ClassesPage() {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
@@ -201,7 +203,10 @@ export default function ClassesPage() {
 
               {/* Actions */}
               <div className="flex items-center gap-2 pt-4 border-t border-border">
-                <button className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-accent border border-input rounded-lg transition text-sm font-medium">
+                <button
+                  onClick={() => router.push(`/dashboard/classes/${classe.id}`)}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-accent border border-input rounded-lg transition text-sm font-medium"
+                >
                   <Eye className="w-4 h-4" />
                   Voir
                 </button>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Plus, Search, Filter, MoreVertical, Eye, Edit, Trash2, Download } from "lucide-react";
 import AddStudentModal from "@/components/AddStudentModal";
 
@@ -59,6 +60,7 @@ const studentsData = [
 ];
 
 export default function StudentsPage() {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClass, setSelectedClass] = useState("all");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
@@ -209,7 +211,10 @@ export default function StudentsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-2">
-                      <button className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-info">
+                      <button
+                        onClick={() => router.push(`/dashboard/students/${student.id}`)}
+                        className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-info"
+                      >
                         <Eye className="w-4 h-4" />
                       </button>
                       <button className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary">
