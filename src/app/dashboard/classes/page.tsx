@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Search, Users, User, Edit, Trash2, Eye } from "lucide-react";
+import AddClassModal from "@/components/AddClassModal";
 
 // Données de démonstration
 const classesData = [
@@ -69,6 +70,7 @@ const classesData = [
 
 export default function ClassesPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const filteredClasses = classesData.filter((classe) =>
     classe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -90,7 +92,10 @@ export default function ClassesPage() {
           <h1 className="text-2xl font-bold text-foreground">Gestion des classes</h1>
           <p className="text-muted-foreground">Organisation des classes par niveau</p>
         </div>
-        <button className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20">
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
+        >
           <Plus className="w-5 h-5" />
           Créer une classe
         </button>
@@ -222,6 +227,12 @@ export default function ClassesPage() {
           <p className="text-muted-foreground">Essayez avec d'autres mots-clés</p>
         </div>
       )}
+
+      {/* Modal d'ajout de classe */}
+      <AddClassModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+      />
     </div>
   );
 }

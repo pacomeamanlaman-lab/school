@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Search, Filter, Mail, Phone, Edit, Trash2, Eye, BookOpen, School } from "lucide-react";
+import AddStaffModal from "@/components/AddStaffModal";
 
 // Données de démonstration
 const staffData = [
@@ -76,6 +77,7 @@ const staffData = [
 export default function StaffPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRole, setSelectedRole] = useState("all");
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const filteredStaff = staffData.filter((person) => {
     const matchSearch =
@@ -107,7 +109,10 @@ export default function StaffPage() {
           <h1 className="text-2xl font-bold text-foreground">Gestion du personnel</h1>
           <p className="text-muted-foreground">Liste complète des membres du personnel</p>
         </div>
-        <button className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20">
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
+        >
           <Plus className="w-5 h-5" />
           Ajouter un membre
         </button>
@@ -260,6 +265,12 @@ export default function StaffPage() {
           <p className="text-muted-foreground">Essayez avec d'autres mots-clés ou filtres</p>
         </div>
       )}
+
+      {/* Modal d'ajout de personnel */}
+      <AddStaffModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+      />
     </div>
   );
 }
