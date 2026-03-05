@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Plus, Search, Filter, MoreVertical, Eye, Edit, Trash2, Download } from "lucide-react";
+import AddStudentModal from "@/components/AddStudentModal";
 
 // Données de démonstration
 const studentsData = [
@@ -61,6 +62,7 @@ export default function StudentsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClass, setSelectedClass] = useState("all");
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   const filteredStudents = studentsData.filter((student) => {
     const matchSearch =
@@ -79,7 +81,10 @@ export default function StudentsPage() {
           <h1 className="text-2xl font-bold text-foreground">Gestion des élèves</h1>
           <p className="text-muted-foreground">Liste complète des élèves inscrits</p>
         </div>
-        <button className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20">
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
+        >
           <Plus className="w-5 h-5" />
           Ajouter un élève
         </button>
@@ -241,6 +246,12 @@ export default function StudentsPage() {
           </div>
         </div>
       </div>
+
+      {/* Modal d'ajout d'élève */}
+      <AddStudentModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+      />
     </div>
   );
 }
