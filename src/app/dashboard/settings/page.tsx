@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2 } from "lucide-react";
+import AddMatiereModal from "@/components/AddMatiereModal";
+import AddTrimestreModal from "@/components/AddTrimestreModal";
 
 export default function SettingsPage() {
   const [schoolInfo, setSchoolInfo] = useState({
@@ -37,14 +39,45 @@ export default function SettingsPage() {
     { id: 8, nom: "Musique", coefficient: 1, couleur: "#6366f1" },
   ]);
 
+  const [isAddMatiereOpen, setIsAddMatiereOpen] = useState(false);
+  const [editingMatiere, setEditingMatiere] = useState<any>(null);
+  const [isAddTrimestreOpen, setIsAddTrimestreOpen] = useState(false);
+  const [editingTrimestre, setEditingTrimestre] = useState<any>(null);
+
   const handleSaveSchoolInfo = () => {
     alert("Informations de l'école enregistrées avec succès !");
+  };
+
+  const handleAddMatiere = (newMatiere: any) => {
+    const matiere = {
+      id: matieres.length + 1,
+      ...newMatiere,
+    };
+    setMatieres([...matieres, matiere]);
+  };
+
+  const handleEditMatiere = (updatedMatiere: any) => {
+    setMatieres(matieres.map(m => m.id === updatedMatiere.id ? updatedMatiere : m));
+    setEditingMatiere(null);
   };
 
   const handleDeleteMatiere = (id: number) => {
     if (confirm("Êtes-vous sûr de vouloir supprimer cette matière ?")) {
       setMatieres(matieres.filter(m => m.id !== id));
     }
+  };
+
+  const handleAddTrimestre = (newTrimestre: any) => {
+    const trimestre = {
+      id: trimestres.length + 1,
+      ...newTrimestre,
+    };
+    setTrimestres([...trimestres, trimestre]);
+  };
+
+  const handleEditTrimestre = (updatedTrimestre: any) => {
+    setTrimestres(trimestres.map(t => t.id === updatedTrimestre.id ? updatedTrimestre : t));
+    setEditingTrimestre(null);
   };
 
   return (
@@ -211,7 +244,10 @@ export default function SettingsPage() {
             <Calendar className="w-5 h-5 text-info" />
             Trimestres
           </h3>
-          <button className="flex items-center gap-2 px-3 py-2 bg-info/10 hover:bg-info/20 text-info rounded-lg transition font-medium border border-info/20">
+          <button
+            onClick={() => setIsAddTrimestreOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-info/10 hover:bg-info/20 text-info rounded-lg transition font-medium border border-info/20"
+          >
             <Plus className="w-4 h-4" />
             Ajouter
           </button>
@@ -227,7 +263,10 @@ export default function SettingsPage() {
                 </p>
               </div>
               <div className="flex items-center gap-1">
-                <button className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary">
+                <button
+                  onClick={() => setEditingTrimestre(trimestre)}
+                  className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
+                >
                   <Edit className="w-4 h-4" />
                 </button>
               </div>
@@ -243,7 +282,10 @@ export default function SettingsPage() {
             <BookOpen className="w-5 h-5 text-success" />
             Matières & Coefficients
           </h3>
-          <button className="flex items-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20">
+          <button
+            onClick={() => setIsAddMatiereOpen(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20"
+          >
             <Plus className="w-4 h-4" />
             Ajouter
           </button>
@@ -263,7 +305,10 @@ export default function SettingsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary">
+                <button
+                  onClick={() => setEditingMatiere(matiere)}
+                  className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
+                >
                   <Edit className="w-4 h-4" />
                 </button>
                 <button
@@ -277,6 +322,37 @@ export default function SettingsPage() {
           ))}
         </div>
       </div>
+
+      {/* Modals */}
+      <AddMatiereModal
+        isOpen={isAddMatiereOpen}
+        onClose={() => setIsAddMatiereOpen(false)}
+        onSubmit={handleAddMatiere}
+      />
+
+      {editingMatiere && (
+        <AddMatiereModal
+          isOpen={!!editingMatiere}
+          onClose={() => setEditingMatiere(null)}
+          onSubmit={handleEditMatiere}
+          matiere={editingMatiere}
+        />
+      )}
+
+      <AddTrimestreModal
+        isOpen={isAddTrimestreOpen}
+        onClose={() => setIsAddTrimestreOpen(false)}
+        onSubmit={handleAddTrimestre}
+      />
+
+      {editingTrimestre && (
+        <AddTrimestreModal
+          isOpen={!!editingTrimestre}
+          onClose={() => setEditingTrimestre(null)}
+          onSubmit={handleEditTrimestre}
+          trimestre={editingTrimestre}
+        />
+      )}
     </div>
   );
 }

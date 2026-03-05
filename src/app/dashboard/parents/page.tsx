@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Search, Filter, Users, Phone, Mail, Edit, Trash2, FileSpreadsheet } from "lucide-react";
+import AddParentModal from "@/components/AddParentModal";
 
 // Données de démonstration - Parents
 const parentsData = [
@@ -57,12 +58,28 @@ export default function ParentsPage() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [parents, setParents] = useState(parentsData);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingParent, setEditingParent] = useState<any>(null);
 
   const filteredParents = parents.filter((parent) =>
     parent.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
     parent.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     parent.telephone.includes(searchTerm)
   );
+
+  const handleAddParent = (newParent: any) => {
+    const parent = {
+      id: parents.length + 1,
+      ...newParent,
+      enfants: [],
+    };
+    setParents([...parents, parent]);
+  };
+
+  const handleEditParent = (updatedParent: any) => {
+    setParents(parents.map(p => p.id === updatedParent.id ? updatedParent : p));
+    setEditingParent(null);
+  };
 
   const handleDeleteParent = (id: number) => {
     if (confirm("Êtes-vous sûr de vouloir supprimer ce parent ?")) {
@@ -78,7 +95,10 @@ export default function ParentsPage() {
           <h1 className="text-2xl font-bold text-foreground">Gestion des Parents/Tuteurs</h1>
           <p className="text-muted-foreground">Liste complète des parents et tuteurs légaux</p>
         </div>
-        <button className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20">
+        <button
+          onClick={() => setIsAddModalOpen(true)}
+          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
+        >
           <Plus className="w-5 h-5" />
           Ajouter un parent
         </button>
@@ -184,7 +204,10 @@ export default function ParentsPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-1">
-                      <button className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary">
+                      <button
+                        onClick={() => setEditingParent(parent)}
+                        className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
+                      >
                         <Edit className="w-4 h-4" />
                       </button>
                       <button
@@ -209,6 +232,22 @@ export default function ParentsPage() {
           </p>
         </div>
       </div>
+
+      {/* Modals */}
+      <AddParentModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleAddParent}
+      />
+
+      {editingParent && (
+        <AddParentModal
+          isOpen={!!editingParent}
+          onClose={() => setEditingParent(null)}
+          onSubmit={handleEditParent}
+          parent={editingParent}
+        />
+      )}
     </div>
   );
 }

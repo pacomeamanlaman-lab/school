@@ -79,9 +79,11 @@ export default function StaffPage() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedRole, setSelectedRole] = useState("all");
+  const [staff, setStaff] = useState(staffData);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingStaff, setEditingStaff] = useState<any>(null);
 
-  const filteredStaff = staffData.filter((person) => {
+  const filteredStaff = staff.filter((person) => {
     const matchSearch =
       person.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       person.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -89,6 +91,26 @@ export default function StaffPage() {
     const matchRole = selectedRole === "all" || person.role === selectedRole;
     return matchSearch && matchRole;
   });
+
+  const handleAddStaff = (newStaff: any) => {
+    const member = {
+      id: staff.length + 1,
+      ...newStaff,
+      status: "active",
+    };
+    setStaff([...staff, member]);
+  };
+
+  const handleEditStaff = (updatedStaff: any) => {
+    setStaff(staff.map(s => s.id === updatedStaff.id ? updatedStaff : s));
+    setEditingStaff(null);
+  };
+
+  const handleDeleteStaff = (id: number) => {
+    if (confirm("Êtes-vous sûr de vouloir supprimer ce membre du personnel ?")) {
+      setStaff(staff.filter(s => s.id !== id));
+    }
+  };
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
@@ -156,18 +178,18 @@ export default function StaffPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total personnel</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{staffData.length}</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{staff.length}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Enseignants</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {staffData.filter((s) => s.role === "Enseignant").length}
+            {staff.filter((s) => s.role === "Enseignant").length}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Administration</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {staffData.filter((s) => s.role !== "Enseignant").length}
+            {staff.filter((s) => s.role !== "Enseignant").length}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
@@ -249,10 +271,16 @@ export default function StaffPage() {
                 <Eye className="w-4 h-4" />
                 Voir
               </button>
-              <button className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition">
+              <button
+                onClick={() => setEditingStaff(person)}
+                className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+              >
                 <Edit className="w-4 h-4 text-primary" />
               </button>
-              <button className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition">
+              <button
+                onClick={() => handleDeleteStaff(person.id)}
+                className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+              >
                 <Trash2 className="w-4 h-4 text-danger" />
               </button>
             </div>
@@ -271,11 +299,21 @@ export default function StaffPage() {
         </div>
       )}
 
-      {/* Modal d'ajout de personnel */}
+      {/* Modals */}
       <AddStaffModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleAddStaff}
       />
+
+      {editingStaff && (
+        <AddStaffModal
+          isOpen={!!editingStaff}
+          onClose={() => setEditingStaff(null)}
+          onSubmit={handleEditStaff}
+          staff={editingStaff}
+        />
+      )}
     </div>
   );
 }

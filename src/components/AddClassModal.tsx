@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { School, Users, MapPin, User } from "lucide-react";
 
 interface AddClassModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSubmit?: (data: any) => void;
+  classe?: any;
 }
 
-export default function AddClassModal({ isOpen, onClose }: AddClassModalProps) {
+export default function AddClassModal({ isOpen, onClose, onSubmit, classe }: AddClassModalProps) {
   const [formData, setFormData] = useState({
     name: "",
     niveau: "",
@@ -19,10 +21,33 @@ export default function AddClassModal({ isOpen, onClose }: AddClassModalProps) {
     anneeScolaire: "2024-2025",
   });
 
+  useEffect(() => {
+    if (classe) {
+      setFormData({
+        name: classe.name || "",
+        niveau: classe.niveau || "",
+        capacite: classe.capacite || 30,
+        titulaire: classe.titulaire || "",
+        salle: classe.salle || "",
+        anneeScolaire: classe.anneeScolaire || "2024-2025",
+      });
+    } else {
+      setFormData({
+        name: "",
+        niveau: "",
+        capacite: 30,
+        titulaire: "",
+        salle: "",
+        anneeScolaire: "2024-2025",
+      });
+    }
+  }, [classe, isOpen]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Ajouter la classe à Supabase
-    console.log("Nouvelle classe:", formData);
+    if (onSubmit) {
+      onSubmit(classe ? { ...classe, ...formData } : formData);
+    }
     onClose();
   };
 
@@ -32,7 +57,7 @@ export default function AddClassModal({ isOpen, onClose }: AddClassModalProps) {
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Créer une classe" size="md">
+    <Modal isOpen={isOpen} onClose={onClose} title={classe ? "Modifier la classe" : "Créer une classe"} size="md">
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Informations de base */}
         <div>
@@ -171,7 +196,7 @@ export default function AddClassModal({ isOpen, onClose }: AddClassModalProps) {
             type="submit"
             className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
           >
-            Créer la classe
+            {classe ? "Modifier" : "Créer la classe"}
           </button>
         </div>
       </form>

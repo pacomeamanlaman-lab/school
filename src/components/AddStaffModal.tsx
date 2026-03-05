@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { User, Mail, Phone, BookOpen, School } from "lucide-react";
 
 interface AddStaffModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onSubmit?: (data: any) => void;
+  staff?: any;
 }
 
-export default function AddStaffModal({ isOpen, onClose }: AddStaffModalProps) {
+export default function AddStaffModal({ isOpen, onClose, onSubmit, staff }: AddStaffModalProps) {
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -23,10 +25,41 @@ export default function AddStaffModal({ isOpen, onClose }: AddStaffModalProps) {
     statut: "active",
   });
 
+  useEffect(() => {
+    if (staff) {
+      setFormData({
+        firstName: staff.firstName || "",
+        lastName: staff.lastName || "",
+        role: staff.role || "Enseignant",
+        matiere: staff.matiere || "",
+        classe: staff.classe || "",
+        email: staff.email || "",
+        phone: staff.phone || "",
+        adresse: staff.adresse || "",
+        dateEmbauche: staff.dateEmbauche || "",
+        statut: staff.statut || "active",
+      });
+    } else {
+      setFormData({
+        firstName: "",
+        lastName: "",
+        role: "Enseignant",
+        matiere: "",
+        classe: "",
+        email: "",
+        phone: "",
+        adresse: "",
+        dateEmbauche: "",
+        statut: "active",
+      });
+    }
+  }, [staff, isOpen]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Ajouter le personnel à Supabase
-    console.log("Nouveau membre:", formData);
+    if (onSubmit) {
+      onSubmit(staff ? { ...staff, ...formData } : formData);
+    }
     onClose();
   };
 
@@ -37,7 +70,7 @@ export default function AddStaffModal({ isOpen, onClose }: AddStaffModalProps) {
   const isEnseignant = formData.role === "Enseignant";
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Ajouter un membre du personnel" size="lg">
+    <Modal isOpen={isOpen} onClose={onClose} title={staff ? "Modifier le membre du personnel" : "Ajouter un membre du personnel"} size="lg">
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Informations personnelles */}
         <div>
@@ -245,7 +278,7 @@ export default function AddStaffModal({ isOpen, onClose }: AddStaffModalProps) {
             type="submit"
             className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
           >
-            Ajouter le membre
+            {staff ? "Modifier" : "Ajouter le membre"}
           </button>
         </div>
       </form>

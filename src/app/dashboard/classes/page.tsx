@@ -72,12 +72,35 @@ const classesData = [
 export default function ClassesPage() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
+  const [classes, setClasses] = useState(classesData);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<any>(null);
 
-  const filteredClasses = classesData.filter((classe) =>
+  const filteredClasses = classes.filter((classe) =>
     classe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     classe.titulaire.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const handleAddClass = (newClass: any) => {
+    const classe = {
+      id: classes.length + 1,
+      ...newClass,
+      effectif: 0,
+      status: "active",
+    };
+    setClasses([...classes, classe]);
+  };
+
+  const handleEditClass = (updatedClass: any) => {
+    setClasses(classes.map(c => c.id === updatedClass.id ? updatedClass : c));
+    setEditingClass(null);
+  };
+
+  const handleDeleteClass = (id: number) => {
+    if (confirm("Êtes-vous sûr de vouloir supprimer cette classe ?")) {
+      setClasses(classes.filter(c => c.id !== id));
+    }
+  };
 
   const getEffectifColor = (effectif: number, capacite: number) => {
     const percentage = (effectif / capacite) * 100;
@@ -121,24 +144,24 @@ export default function ClassesPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total classes</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{classesData.length}</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{classes.length}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total élèves</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {classesData.reduce((sum, c) => sum + c.effectif, 0)}
+            {classes.reduce((sum, c) => sum + c.effectif, 0)}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Moyenne par classe</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {Math.round(classesData.reduce((sum, c) => sum + c.effectif, 0) / classesData.length)}
+            {Math.round(classes.reduce((sum, c) => sum + c.effectif, 0) / classes.length)}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Classes pleines</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {classesData.filter((c) => c.effectif >= c.capacite).length}
+            {classes.filter((c) => c.effectif >= c.capacite).length}
           </p>
         </div>
       </div>
@@ -210,10 +233,16 @@ export default function ClassesPage() {
                   <Eye className="w-4 h-4" />
                   Voir
                 </button>
-                <button className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition">
+                <button
+                  onClick={() => setEditingClass(classe)}
+                  className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+                >
                   <Edit className="w-4 h-4 text-primary" />
                 </button>
-                <button className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition">
+                <button
+                  onClick={() => handleDeleteClass(classe.id)}
+                  className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+                >
                   <Trash2 className="w-4 h-4 text-danger" />
                 </button>
               </div>
@@ -233,11 +262,21 @@ export default function ClassesPage() {
         </div>
       )}
 
-      {/* Modal d'ajout de classe */}
+      {/* Modals */}
       <AddClassModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleAddClass}
       />
+
+      {editingClass && (
+        <AddClassModal
+          isOpen={!!editingClass}
+          onClose={() => setEditingClass(null)}
+          onSubmit={handleEditClass}
+          classe={editingClass}
+        />
+      )}
     </div>
   );
 }
