@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Filter, Save, Download, Award, TrendingUp } from "lucide-react";
+import { Filter, Save, Download, Award, TrendingUp, FileSpreadsheet } from "lucide-react";
+import { exportNotesToPDF } from "@/utils/pdfExport";
+import { exportNotesToExcel } from "@/utils/excelExport";
 
 // Données de démonstration
 const classesData = [
@@ -67,6 +69,42 @@ export default function NotesPage() {
       notes,
     });
     alert("Notes enregistrées avec succès !");
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      await exportNotesToPDF(selectedClass, selectedMatiere, selectedTrimestre);
+    } catch (error) {
+      console.error("Erreur lors de l'export PDF:", error);
+      alert("Erreur lors de l'export PDF");
+    }
+  };
+
+  const handleExportExcel = () => {
+    const studentsWithNotes = filteredStudents.map((student) => {
+      const studentNote = notes[student.id];
+      const appreciation =
+        studentNote >= 16
+          ? "Très bien"
+          : studentNote >= 14
+          ? "Bien"
+          : studentNote >= 12
+          ? "Assez bien"
+          : studentNote >= 10
+          ? "Passable"
+          : studentNote
+          ? "Insuffisant"
+          : "-";
+
+      return {
+        firstName: student.firstName,
+        lastName: student.lastName,
+        note: studentNote,
+        appreciation,
+      };
+    });
+
+    exportNotesToExcel(selectedClass, selectedMatiere, selectedTrimestre, studentsWithNotes);
   };
 
   return (
@@ -138,10 +176,13 @@ export default function NotesPage() {
           </div>
 
           {/* Actions */}
-          <div className="flex items-end gap-2">
-            <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium">
-              <Download className="w-4 h-4" />
-              Export
+          <div className="flex items-end">
+            <button
+              onClick={handleExportExcel}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Exporter en Excel
             </button>
           </div>
         </div>
@@ -183,7 +224,7 @@ export default function NotesPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table id="notes-table" className="w-full">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
                 <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Élève</th>

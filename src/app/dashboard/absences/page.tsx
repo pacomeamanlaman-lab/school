@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, Filter, Download, CheckCircle, XCircle, Clock, AlertTriangle } from "lucide-react";
+import { Calendar, Filter, Download, CheckCircle, XCircle, Clock, AlertTriangle, FileSpreadsheet } from "lucide-react";
+import { exportAbsencesToPDF } from "@/utils/pdfExport";
+import { exportAbsencesToExcel } from "@/utils/excelExport";
 
 // Données de démonstration
 const classesData = [
@@ -74,6 +76,26 @@ export default function AbsencesPage() {
     alert("Appel enregistré avec succès !");
   };
 
+  const handleExportPDF = async () => {
+    try {
+      await exportAbsencesToPDF(selectedClass, selectedDate);
+    } catch (error) {
+      console.error("Erreur lors de l'export PDF:", error);
+      alert("Erreur lors de l'export PDF");
+    }
+  };
+
+  const handleExportExcel = () => {
+    const studentsWithAttendance = filteredStudents.map((student) => ({
+      firstName: student.firstName,
+      lastName: student.lastName,
+      status: attendance[student.id]?.status || null,
+      motif: attendance[student.id]?.motif,
+    }));
+
+    exportAbsencesToExcel(selectedClass, selectedDate, studentsWithAttendance);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -123,10 +145,20 @@ export default function AbsencesPage() {
           </div>
 
           {/* Actions */}
-          <div className="flex items-end gap-2">
-            <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium">
+          <div className="flex items-end gap-3">
+            <button
+              onClick={handleExportPDF}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm"
+            >
               <Download className="w-4 h-4" />
-              Exporter
+              Exporter en PDF
+            </button>
+            <button
+              onClick={handleExportExcel}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              Exporter en Excel
             </button>
           </div>
         </div>
@@ -166,7 +198,7 @@ export default function AbsencesPage() {
           </button>
         </div>
 
-        <div className="p-6 space-y-3">
+        <div id="absences-table" className="p-6 space-y-3">
           {filteredStudents.map((student) => {
             const studentStatus = attendance[student.id]?.status;
             const hasAlert = student.absencesCount >= 5;

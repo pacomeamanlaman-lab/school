@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install lucide-react recharts)",
+      "Bash(npm run dev)",
+      "Bash(git add package.json package-lock.json src/)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAjouter MVP interface graphique - Login, Dashboard & Élèves\n\n- Design system configuré : Poppins, couleurs primary (#00aef0) & secondary (#10a7aa), thème light\n- Page de login avec formulaire et validation\n- Layout dashboard avec sidebar collapsible et topbar\n- Page tableau de bord avec stats et graphiques (recharts)\n- Page gestion élèves avec tableau, filtres et recherche\n- Installation lucide-react et recharts\n- Inputs avec fond blanc et bordures grises\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(mkdir -p \"src/app/dashboard/classes\")",
+      "Bash(git add src/)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAjouter pages Classes, Personnel et formulaires modaux\n\n- Page gestion des classes avec grille de cards (3 par ligne)\n- Page gestion du personnel avec cards (3 par ligne)\n- Composant Modal réutilisable avec gestion Escape et overlay\n- Formulaire d''ajout d''élève complet avec validation\n- Remplacement des emojis par icônes Lucide React (BookOpen, School)\n- Stats par page (effectifs, moyennes, etc.)\n- Intégration du modal d''ajout dans la page élèves\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAjouter formulaires modaux pour Classes et Personnel\n\n- Formulaire AddClassModal : niveau, capacité, titulaire, salle\n- Formulaire AddStaffModal : infos personnelles + professionnelles\n- Champs dynamiques selon rôle (matière/classe pour enseignants)\n- Intégration des modals dans pages Classes et Personnel\n- Validation des champs requis\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAjouter pages de détails complètes (fiches)\n\n- Page détail élève : infos personnelles, parent, notes, absences, stats\n- Page détail classe : infos, liste élèves cliquable, stats, répartition\n- Page détail personnel : infos, emploi du temps, stats, ancienneté\n- Navigation fonctionnelle via boutons \"Voir\" sur toutes les listes\n- Layout responsive avec colonnes latérales stats\n- Données de démonstration complètes\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git remote add origin https://github.com/pacomeamanlaman-lab/school.git)",
+      "Bash(git push -u origin master)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAjouter modules Absences et Notes (Phase 2)\n\nModule Absences :\n- Appel journalier par classe et date\n- Statuts : Présent / Absent / Retard\n- Modal pour motif d''absence\n- Stats temps réel (présents, absents, retards)\n- Alertes pour élèves avec trop d''absences\n- Report différé (saisie centralisée au bureau)\n\nModule Notes :\n- Saisie notes par classe/matière/trimestre\n- Calcul automatique moyennes et appréciations\n- Stats : moyenne classe, note max/min, taux de réussite\n- Coefficient par matière\n- Interface tableau avec validation 0-20\n\nAjout dans sidebar : Absences + Notes\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push origin master)",
+      "Bash(npm install jspdf html2canvas)",
+      "Bash(npm install xlsx)",
+      "Bash(npm run build)",
+      "Bash(git add .)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -14,6 +14,8 @@ import {
   GraduationCap,
   CheckSquare,
   ClipboardList,
+  FileText,
+  Calendar,
 } from "lucide-react";
 
 const menuItems = [
@@ -38,6 +40,11 @@ const menuItems = [
     href: "/dashboard/staff",
   },
   {
+    title: "Emplois du temps",
+    icon: Calendar,
+    href: "/dashboard/emplois-du-temps",
+  },
+  {
     title: "Absences",
     icon: CheckSquare,
     href: "/dashboard/absences",
@@ -46,6 +53,11 @@ const menuItems = [
     title: "Notes",
     icon: ClipboardList,
     href: "/dashboard/notes",
+  },
+  {
+    title: "Bulletins",
+    icon: FileText,
+    href: "/dashboard/bulletins",
   },
   {
     title: "Paramètres",

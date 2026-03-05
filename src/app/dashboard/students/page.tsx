@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Filter, MoreVertical, Eye, Edit, Trash2, Download } from "lucide-react";
+import { Plus, Search, Filter, MoreVertical, Eye, Edit, Trash2, Download, FileSpreadsheet } from "lucide-react";
 import AddStudentModal from "@/components/AddStudentModal";
+import { exportStudentsToExcel } from "@/utils/excelExport";
 
 // Données de démonstration
 const studentsData = [
@@ -75,6 +76,18 @@ export default function StudentsPage() {
     return matchSearch && matchClass;
   });
 
+  const handleExportExcel = () => {
+    const studentsForExport = filteredStudents.map((student) => ({
+      firstName: student.firstName,
+      lastName: student.lastName,
+      dateOfBirth: student.dateNaissance,
+      classe: student.classe,
+      parent: { name: "Parent fictif", phone: "0123456789" },
+    }));
+
+    exportStudentsToExcel(studentsForExport);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -125,10 +138,13 @@ export default function StudentsPage() {
             </select>
           </div>
 
-          {/* Export */}
-          <button className="flex items-center gap-2 px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium text-foreground">
-            <Download className="w-5 h-5" />
-            Exporter
+          {/* Export Excel */}
+          <button
+            onClick={handleExportExcel}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            Exporter en Excel
           </button>
         </div>
       </div>
