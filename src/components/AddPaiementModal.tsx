@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { Coins, Calendar, CreditCard, FileText } from "lucide-react";
 
@@ -17,14 +17,23 @@ interface AddPaiementModalProps {
   onSubmit?: (data: any) => void;
 }
 
+const emptyForm = () => ({
+  montant: "",
+  datePaiement: new Date().toISOString().split("T")[0],
+  modePaiement: "especes",
+  numeroRecu: "",
+  remarques: "",
+});
+
 export default function AddPaiementModal({ isOpen, onClose, student, onSubmit }: AddPaiementModalProps) {
-  const [formData, setFormData] = useState({
-    montant: "",
-    datePaiement: new Date().toISOString().split("T")[0],
-    modePaiement: "especes",
-    numeroRecu: "",
-    remarques: "",
-  });
+  const [formData, setFormData] = useState(emptyForm);
+  const [solderComplet, setSolderComplet] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setSolderComplet(false);
+    setFormData(emptyForm());
+  }, [isOpen, student?.studentId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,19 +44,41 @@ export default function AddPaiementModal({ isOpen, onClose, student, onSubmit }:
         ...formData,
       });
     }
-    // Reset form
-    setFormData({
-      montant: "",
-      datePaiement: new Date().toISOString().split("T")[0],
-      modePaiement: "especes",
-      numeroRecu: "",
-      remarques: "",
-    });
+    setSolderComplet(false);
+    setFormData(emptyForm());
     onClose();
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleMontantChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    if (!student) return;
+    const reste = student.montantTotal - student.montantPaye;
+    if (solderComplet) {
+      if (val === "") {
+        setSolderComplet(false);
+      } else {
+        const num = parseFloat(val);
+        if (!Number.isNaN(num) && Math.abs(num - reste) > 0.001) {
+          setSolderComplet(false);
+        }
+      }
+    }
+    setFormData({ ...formData, montant: val });
+  };
+
+  const handleSolderChange = (checked: boolean) => {
+    if (!student) return;
+    const reste = student.montantTotal - student.montantPaye;
+    setSolderComplet(checked);
+    if (checked && reste > 0) {
+      setFormData((f) => ({ ...f, montant: String(reste) }));
+    } else {
+      setFormData((f) => ({ ...f, montant: "" }));
+    }
   };
 
   if (!student) return null;
@@ -97,7 +128,7 @@ export default function AddPaiementModal({ isOpen, onClose, student, onSubmit }:
                 type="number"
                 name="montant"
                 value={formData.montant}
-                onChange={handleChange}
+                onChange={handleMontantChange}
                 required
                 max={resteAPayer}
                 min={0}
@@ -105,7 +136,23 @@ export default function AddPaiementModal({ isOpen, onClose, student, onSubmit }:
                 placeholder="25000"
               />
             </div>
-            <p className="text-xs text-muted-foreground mt-1">Maximum : {resteAPayer.toLocaleString()} FCFA</p>
+            <div className="mt-2 flex items-start gap-2">
+              <input
+                type="checkbox"
+                id="solder-complet"
+                checked={solderComplet}
+                disabled={resteAPayer <= 0}
+                onChange={(e) => handleSolderChange(e.target.checked)}
+                className="mt-1 h-4 w-4 rounded border-input text-primary focus:ring-ring"
+              />
+              <label htmlFor="solder-complet" className="text-sm text-foreground cursor-pointer leading-snug">
+                <span className="font-medium">Solder</span>
+                <span className="text-muted-foreground">
+                  {" "}
+                  — remplir avec le reste dû ({resteAPayer.toLocaleString()} FCFA)
+                </span>
+              </label>
+            </div>
           </div>
 
           {/* Date */}
