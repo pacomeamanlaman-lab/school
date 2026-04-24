@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Modal from "./Modal";
-import { DollarSign, Calendar, CreditCard, FileText } from "lucide-react";
+import { Coins, Calendar, CreditCard, FileText } from "lucide-react";
 
 interface AddPaiementModalProps {
   isOpen: boolean;
@@ -92,7 +92,7 @@ export default function AddPaiementModal({ isOpen, onClose, student, onSubmit }:
               Montant du paiement <span className="text-danger">*</span>
             </label>
             <div className="relative">
-              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <Coins className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <input
                 type="number"
                 name="montant"

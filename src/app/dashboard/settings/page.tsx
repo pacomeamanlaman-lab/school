@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2, DollarSign, ListPlus } from "lucide-react";
+import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2, Coins, ListPlus } from "lucide-react";
 import AddMatiereModal from "@/components/AddMatiereModal";
 import AddTrimestreModal from "@/components/AddTrimestreModal";
 import type { FiltreCycleFrais } from "@/lib/cycles-scolaires-ci";
@@ -397,7 +397,7 @@ export default function SettingsPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-              <DollarSign className="w-5 h-5 text-warning" />
+              <Coins className="w-5 h-5 text-warning" />
               Frais scolaires par niveau
             </h3>
             <p className="text-sm text-muted-foreground mt-1">

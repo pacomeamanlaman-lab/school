@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { DollarSign, Search, Filter, TrendingUp, TrendingDown, AlertCircle, Plus, Eye } from "lucide-react";
+import { Coins, Search, Filter, TrendingUp, TrendingDown, AlertCircle, Plus, Eye } from "lucide-react";
 import AddPaiementModal from "@/components/AddPaiementModal";
 
 type DossierFinancierRow = (typeof fraisScolairesDataDefault)[number];
@@ -207,7 +207,7 @@ export default function ComptabilitePage() {
                 {stats.total.toLocaleString()} FCFA
               </p>
             </div>
-            <DollarSign className="w-8 h-8 text-primary" />
+            <Coins className="w-8 h-8 text-primary" />
           </div>
         </div>
 
