@@ -130,10 +130,15 @@ export default function StudentsPage() {
     };
 
     // Sauvegarder dans localStorage pour que Comptabilité le récupère
-    const existingFrais = JSON.parse(localStorage.getItem("school_frais_eleves") || "[]");
-    localStorage.setItem("school_frais_eleves", JSON.stringify([...existingFrais, dossierFinancier]));
+    const existingFrais = JSON.parse(localStorage.getItem("school_frais_eleves") || "[]") as Array<{ id?: number }>;
+    const maxDossierId = existingFrais.reduce(
+      (m, f) => Math.max(m, typeof f.id === "number" ? f.id : 0),
+      0
+    );
+    const dossierAvecId = { id: maxDossierId + 1, ...dossierFinancier };
+    localStorage.setItem("school_frais_eleves", JSON.stringify([...existingFrais, dossierAvecId]));
 
-    console.log(`✅ Dossier financier créé pour ${student.firstName} ${student.lastName}:`, dossierFinancier);
+    console.log(`✅ Dossier financier créé pour ${student.firstName} ${student.lastName}:`, dossierAvecId);
 
     setIsAddModalOpen(false);
   };

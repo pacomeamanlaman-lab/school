@@ -4,11 +4,40 @@ import { useState, useEffect } from "react";
 import { DollarSign, Search, Filter, TrendingUp, TrendingDown, AlertCircle, Plus, Eye } from "lucide-react";
 import AddPaiementModal from "@/components/AddPaiementModal";
 
+type DossierFinancierRow = (typeof fraisScolairesDataDefault)[number];
+
+/** Garantit un `id` numérique par ligne (clé React + cohérence) ; persiste si correction nécessaire */
+function ensureDossierFinancierIds(rows: unknown[]): DossierFinancierRow[] {
+  if (!Array.isArray(rows)) return fraisScolairesDataDefault;
+  let maxId: number = rows.reduce((m: number, raw: unknown) => {
+    const id = (raw as { id?: unknown }).id;
+    return Math.max(m, typeof id === "number" && id > 0 ? id : 0);
+  }, 0);
+  let changed = false;
+  const out: DossierFinancierRow[] = rows.map((raw) => {
+    const f = raw as DossierFinancierRow;
+    if (typeof f.id === "number" && f.id > 0) return f;
+    changed = true;
+    maxId += 1;
+    return { ...f, id: maxId } as DossierFinancierRow;
+  });
+  if (changed && typeof window !== "undefined") {
+    localStorage.setItem("school_frais_eleves", JSON.stringify(out));
+  }
+  return out;
+}
+
 // Charger les frais depuis localStorage
 const loadFraisEleves = () => {
   if (typeof window !== "undefined") {
     const stored = localStorage.getItem("school_frais_eleves");
-    return stored ? JSON.parse(stored) : fraisScolairesDataDefault;
+    if (!stored) return fraisScolairesDataDefault;
+    try {
+      const parsed = JSON.parse(stored) as unknown;
+      return ensureDossierFinancierIds(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      return fraisScolairesDataDefault;
+    }
   }
   return fraisScolairesDataDefault;
 };
@@ -271,7 +300,10 @@ export default function ComptabilitePage() {
                 const pourcentage = (frais.montantPaye / frais.montantTotal) * 100;
 
                 return (
-                  <tr key={frais.id} className="border-b border-border hover:bg-accent/50 transition">
+                  <tr
+                    key={frais.id ?? `student-${frais.studentId}`}
+                    className="border-b border-border hover:bg-accent/50 transition"
+                  >
                     <td className="px-6 py-4">
                       <p className="font-medium text-foreground">{frais.studentName}</p>
                     </td>
