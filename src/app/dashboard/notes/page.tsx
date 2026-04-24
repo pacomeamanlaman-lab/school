@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Filter, Save, Download, Award, TrendingUp, FileSpreadsheet } from "lucide-react";
+import { Filter, Save, Download, Award, TrendingUp, FileSpreadsheet, MessageCircle } from "lucide-react";
+import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
+import { buildNoteWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { exportNotesToPDF } from "@/utils/pdfExport";
 import { exportNotesToExcel } from "@/utils/excelExport";
 
@@ -39,6 +41,7 @@ export default function NotesPage() {
   const [selectedMatiere, setSelectedMatiere] = useState("Français");
   const [selectedTrimestre, setSelectedTrimestre] = useState("Trimestre 1");
   const [notes, setNotes] = useState<Record<number, number>>({});
+  const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
 
   const filteredStudents = studentsData.filter((s) => s.classe === selectedClass);
   const currentMatiere = matieres.find((m) => m.name === selectedMatiere);
@@ -231,6 +234,7 @@ export default function NotesPage() {
                 <th className="text-center px-6 py-4 text-sm font-semibold text-foreground">Note / 20</th>
                 <th className="text-center px-6 py-4 text-sm font-semibold text-foreground">Appréciation</th>
                 <th className="text-center px-6 py-4 text-sm font-semibold text-foreground">Rang</th>
+                <th className="text-right px-6 py-4 text-sm font-semibold text-foreground">WhatsApp</th>
               </tr>
             </thead>
             <tbody>
@@ -300,6 +304,32 @@ export default function NotesPage() {
                         <span className="text-muted-foreground text-sm">-</span>
                       )}
                     </td>
+                    <td className="px-6 py-4 text-right">
+                      {studentNote !== undefined && studentNote !== null && !Number.isNaN(studentNote) ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWaContext(
+                              buildNoteWhatsAppContext({
+                                studentFirstName: student.firstName,
+                                studentLastName: student.lastName,
+                                classe: selectedClass,
+                                matiere: selectedMatiere,
+                                trimestre: selectedTrimestre,
+                                note: String(studentNote),
+                              })
+                            )
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#25D366]/40 bg-[#25D366]/10 px-2.5 py-1.5 text-xs font-medium text-[#128C7E] transition hover:bg-[#25D366]/20"
+                          title="Notifier le parent (WhatsApp)"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          Notifier
+                        </button>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -340,6 +370,16 @@ export default function NotesPage() {
           </div>
         </div>
       </div>
+
+      <WhatsAppNotifyModal
+        isOpen={!!waContext}
+        onClose={() => setWaContext(null)}
+        context={waContext}
+        onConfirmSend={(ctx) => {
+          console.log("[MVP WhatsApp] Note — envoi simulé:", ctx);
+          alert("Envoi WhatsApp simulé (branchement Meta + backend à venir).");
+        }}
+      />
     </div>
   );
 }

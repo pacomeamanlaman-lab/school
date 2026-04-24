@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, Filter, Download, CheckCircle, XCircle, Clock, AlertTriangle, FileSpreadsheet } from "lucide-react";
+import { Calendar, Filter, Download, CheckCircle, XCircle, Clock, AlertTriangle, FileSpreadsheet, MessageCircle } from "lucide-react";
+import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
+import { buildAbsenceWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { exportAbsencesToPDF } from "@/utils/pdfExport";
 import { exportAbsencesToExcel } from "@/utils/excelExport";
 
@@ -37,6 +39,7 @@ export default function AbsencesPage() {
   const [attendance, setAttendance] = useState<Record<number, StudentAttendance>>({});
   const [showMotifModal, setShowMotifModal] = useState<number | null>(null);
   const [motif, setMotif] = useState("");
+  const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
 
   const filteredStudents = studentsData.filter((s) => s.classe === selectedClass);
 
@@ -241,7 +244,28 @@ export default function AbsencesPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {studentStatus === "absent" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setWaContext(
+                          buildAbsenceWhatsAppContext({
+                            studentFirstName: student.firstName,
+                            studentLastName: student.lastName,
+                            classe: selectedClass,
+                            dateISO: selectedDate,
+                            motif: attendance[student.id]?.motif,
+                          })
+                        )
+                      }
+                      className="flex items-center gap-1.5 rounded-lg border border-[#25D366]/40 bg-[#25D366]/10 px-3 py-2 text-xs font-medium text-[#128C7E] transition hover:bg-[#25D366]/20"
+                      title="Prévenir le parent par WhatsApp"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      Prévenir le parent (WhatsApp)
+                    </button>
+                  )}
                   <button
                     onClick={() => handleStatusChange(student.id, "present")}
                     className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
@@ -283,6 +307,16 @@ export default function AbsencesPage() {
       </div>
 
       {/* Modal motif d'absence */}
+      <WhatsAppNotifyModal
+        isOpen={!!waContext}
+        onClose={() => setWaContext(null)}
+        context={waContext}
+        onConfirmSend={(ctx) => {
+          console.log("[MVP WhatsApp] Absence — envoi simulé:", ctx);
+          alert("Envoi WhatsApp simulé (branchement Meta + backend à venir).");
+        }}
+      />
+
       {showMotifModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowMotifModal(null)}></div>

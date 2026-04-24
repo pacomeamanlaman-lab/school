@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Filter, Users, Phone, Mail, Edit, Trash2, FileSpreadsheet } from "lucide-react";
+import { Plus, Search, Filter, Users, Phone, Mail, Edit, Trash2, FileSpreadsheet, MessageCircle } from "lucide-react";
+import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
+import { buildManualWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import AddParentModal from "@/components/AddParentModal";
 
 // Données de démonstration - Parents
@@ -60,6 +62,7 @@ export default function ParentsPage() {
   const [parents, setParents] = useState(parentsData);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingParent, setEditingParent] = useState<any>(null);
+  const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
 
   const filteredParents = parents.filter((parent) =>
     parent.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -205,6 +208,26 @@ export default function ParentsPage() {
                   <td className="px-6 py-4">
                     <div className="flex items-center justify-end gap-1">
                       <button
+                        type="button"
+                        onClick={() =>
+                          setWaContext(
+                            buildManualWhatsAppContext({
+                              parentNomComplet: parent.nom,
+                              whatsapp: parent.telephone || null,
+                              sujet: "Information de l'établissement",
+                              eleveOuEnfants:
+                                parent.enfants.length > 0
+                                  ? parent.enfants.map((e) => `${e.nom} (${e.classe})`).join(", ")
+                                  : "vos enfants",
+                            })
+                          )
+                        }
+                        className="p-2 hover:bg-accent rounded-lg transition text-[#128C7E] hover:text-[#075E54]"
+                        title="WhatsApp"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                      </button>
+                      <button
                         onClick={() => setEditingParent(parent)}
                         className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
                       >
@@ -248,6 +271,16 @@ export default function ParentsPage() {
           parent={editingParent}
         />
       )}
+
+      <WhatsAppNotifyModal
+        isOpen={!!waContext}
+        onClose={() => setWaContext(null)}
+        context={waContext}
+        onConfirmSend={(ctx) => {
+          console.log("[MVP WhatsApp] Parent — envoi simulé:", ctx);
+          alert("Envoi WhatsApp simulé (branchement Meta + backend à venir).");
+        }}
+      />
     </div>
   );
 }

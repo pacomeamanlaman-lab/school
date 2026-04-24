@@ -1,7 +1,10 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Edit, Trash2, Phone, Mail, MapPin, Calendar, User, Users, FileText, Download, Eye } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Edit, Trash2, Phone, Mail, MapPin, Calendar, User, Users, FileText, Download, Eye, MessageCircle } from "lucide-react";
+import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
+import { buildManualWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 
 // Données de démonstration (à remplacer par Supabase)
 const studentData = {
@@ -64,7 +67,7 @@ const studentData = {
 
 export default function StudentDetailPage() {
   const router = useRouter();
-  const params = useParams();
+  const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
 
   const handleDownload = (document: any) => {
     // MVP: Simuler le téléchargement
@@ -82,7 +85,7 @@ export default function StudentDetailPage() {
   return (
     <div className="space-y-6">
       {/* Header avec retour */}
-      <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center gap-3 md:gap-4">
         <button
           onClick={() => router.back()}
           className="p-2 hover:bg-accent rounded-lg transition"
@@ -93,6 +96,23 @@ export default function StudentDetailPage() {
           <h1 className="text-2xl font-bold text-foreground">Fiche élève</h1>
           <p className="text-muted-foreground">Informations détaillées</p>
         </div>
+        <button
+          type="button"
+          onClick={() =>
+            setWaContext(
+              buildManualWhatsAppContext({
+                parentNomComplet: studentData.parent.name,
+                whatsapp: studentData.parent.phone,
+                sujet: `Élève ${studentData.firstName} ${studentData.lastName}`,
+                eleveOuEnfants: `${studentData.firstName} ${studentData.lastName} (${studentData.classe})`,
+              })
+            )
+          }
+          className="flex items-center gap-2 px-4 py-2.5 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition font-medium border border-[#25D366]/30"
+        >
+          <MessageCircle className="w-4 h-4" />
+          WhatsApp parent
+        </button>
         <button className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20">
           <Edit className="w-4 h-4" />
           Modifier
@@ -365,6 +385,16 @@ export default function StudentDetailPage() {
           </div>
         </div>
       </div>
+
+      <WhatsAppNotifyModal
+        isOpen={!!waContext}
+        onClose={() => setWaContext(null)}
+        context={waContext}
+        onConfirmSend={(ctx) => {
+          console.log("[MVP WhatsApp] Fiche élève — envoi simulé:", ctx);
+          alert("Envoi WhatsApp simulé (branchement Meta + backend à venir).");
+        }}
+      />
     </div>
   );
 }

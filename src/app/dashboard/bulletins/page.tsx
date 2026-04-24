@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Filter, Download, Eye, FileText, Send, FileSpreadsheet } from "lucide-react";
+import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
+import { buildBulletinWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { exportBulletinToPDF } from "@/utils/pdfExport";
 import { exportBulletinsToExcel } from "@/utils/excelExport";
 
@@ -75,6 +77,7 @@ export default function BulletinsPage() {
   const [selectedClass, setSelectedClass] = useState("CP - Classe A");
   const [selectedTrimestre, setSelectedTrimestre] = useState("Trimestre 1");
   const [selectedStudent, setSelectedStudent] = useState<typeof studentsData[0] | null>(null);
+  const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
 
   const filteredStudents = studentsData.filter((s) => s.classe === selectedClass);
 
@@ -293,9 +296,23 @@ export default function BulletinsPage() {
                         <Download className="w-4 h-4" />
                         PDF
                       </button>
-                      <button className="flex items-center gap-2 px-3 py-2 bg-secondary/10 hover:bg-secondary/20 text-secondary rounded-lg transition text-sm font-medium">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWaContext(
+                            buildBulletinWhatsAppContext({
+                              studentFirstName: student.firstName,
+                              studentLastName: student.lastName,
+                              classe: student.classe,
+                              trimestre: selectedTrimestre,
+                              moyenne: student.moyenne.toFixed(2),
+                            })
+                          )
+                        }
+                        className="flex items-center gap-2 px-3 py-2 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition text-sm font-medium"
+                      >
                         <Send className="w-4 h-4" />
-                        Envoyer
+                        Notifier parent
                       </button>
                     </div>
                   </td>
@@ -420,7 +437,24 @@ export default function BulletinsPage() {
             </div>
 
             {/* Actions modal */}
-            <div className="px-6 py-4 border-t border-border flex items-center justify-end gap-3">
+            <div className="px-6 py-4 border-t border-border flex flex-wrap items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setWaContext(
+                    buildBulletinWhatsAppContext({
+                      studentFirstName: selectedStudent.firstName,
+                      studentLastName: selectedStudent.lastName,
+                      classe: selectedStudent.classe,
+                      trimestre: selectedTrimestre,
+                      moyenne: selectedStudent.moyenne.toFixed(2),
+                    })
+                  );
+                }}
+                className="px-4 py-2 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition font-medium"
+              >
+                Notifier parent (WhatsApp)
+              </button>
               <button
                 onClick={() => setSelectedStudent(null)}
                 className="px-4 py-2 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
@@ -437,6 +471,16 @@ export default function BulletinsPage() {
           </div>
         </div>
       )}
+
+      <WhatsAppNotifyModal
+        isOpen={!!waContext}
+        onClose={() => setWaContext(null)}
+        context={waContext}
+        onConfirmSend={(ctx) => {
+          console.log("[MVP WhatsApp] Bulletin — envoi simulé:", ctx);
+          alert("Envoi WhatsApp simulé (branchement Meta + backend à venir).");
+        }}
+      />
     </div>
   );
 }
