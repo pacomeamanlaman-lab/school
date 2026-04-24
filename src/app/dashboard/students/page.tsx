@@ -5,28 +5,7 @@ import { useRouter } from "next/navigation";
 import { Plus, Search, Filter, MoreVertical, Eye, Edit, Trash2, Download, FileSpreadsheet } from "lucide-react";
 import AddStudentModal from "@/components/AddStudentModal";
 import { exportStudentsToExcel } from "@/utils/excelExport";
-
-// Importer la fonction de détection des frais
-const getMontantParClasse = (classe: string): number => {
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem("school_frais_scolaires");
-    if (stored) {
-      const frais = JSON.parse(stored);
-      const found = frais.find((f: any) => f.niveau === classe);
-      return found ? found.montant : 50000;
-    }
-  }
-  // Valeurs par défaut si pas encore configuré
-  const defaultFrais: Record<string, number> = {
-    "CP": 45000,
-    "CE1": 50000,
-    "CE2": 55000,
-    "CM1": 60000,
-    "CM2": 75000,
-    "6ème": 100000,
-  };
-  return defaultFrais[classe] || 50000;
-};
+import { getMontantParClasse } from "@/lib/frais-scolaires";
 
 // Données de démonstration
 const studentsData = [

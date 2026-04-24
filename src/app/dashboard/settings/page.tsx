@@ -4,39 +4,14 @@ import { useState, useEffect } from "react";
 import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2, DollarSign } from "lucide-react";
 import AddMatiereModal from "@/components/AddMatiereModal";
 import AddTrimestreModal from "@/components/AddTrimestreModal";
-
-// Utilitaire pour gérer les frais scolaires dans localStorage
-const FRAIS_STORAGE_KEY = "school_frais_scolaires";
-
-const getDefaultFrais = () => [
-  { id: 1, niveau: "CP", montant: 45000 },
-  { id: 2, niveau: "CE1", montant: 50000 },
-  { id: 3, niveau: "CE2", montant: 55000 },
-  { id: 4, niveau: "CM1", montant: 60000 },
-  { id: 5, niveau: "CM2", montant: 75000 },
-  { id: 6, niveau: "6ème", montant: 100000 },
-];
-
-const saveFraisToStorage = (frais: any[]) => {
-  if (typeof window !== "undefined") {
-    localStorage.setItem(FRAIS_STORAGE_KEY, JSON.stringify(frais));
-  }
-};
-
-const loadFraisFromStorage = () => {
-  if (typeof window !== "undefined") {
-    const stored = localStorage.getItem(FRAIS_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : getDefaultFrais();
-  }
-  return getDefaultFrais();
-};
-
-// Fonction exportée pour être utilisée partout
-export const getMontantParClasse = (classe: string): number => {
-  const frais = loadFraisFromStorage();
-  const found = frais.find((f: any) => f.niveau === classe);
-  return found ? found.montant : 50000; // Montant par défaut si classe non trouvée
-};
+import type { FiltreCycleFrais } from "@/lib/cycles-scolaires-ci";
+import { inferCycleFromNiveau, niveauxPourFiltreCycle } from "@/lib/cycles-scolaires-ci";
+import type { FraisScolaireItem } from "@/lib/frais-scolaires";
+import {
+  getDefaultFrais,
+  loadFraisFromStorage,
+  saveFraisToStorage,
+} from "@/lib/frais-scolaires";
 
 export default function SettingsPage() {
   const [schoolInfo, setSchoolInfo] = useState({
@@ -72,10 +47,14 @@ export default function SettingsPage() {
     { id: 8, nom: "Musique", coefficient: 1, couleur: "#6366f1" },
   ]);
 
-  const [fraisScolaires, setFraisScolaires] = useState(getDefaultFrais());
-  const [editingFrais, setEditingFrais] = useState<{ niveau: string; montant: number } | null>(null);
+  const [fraisScolaires, setFraisScolaires] = useState<FraisScolaireItem[]>(getDefaultFrais());
+  const [editingFrais, setEditingFrais] = useState<{ id: number; montant: number } | null>(null);
   const [isAddFraisOpen, setIsAddFraisOpen] = useState(false);
-  const [newFrais, setNewFrais] = useState({ niveau: "", montant: 0 });
+  const [newFraisForm, setNewFraisForm] = useState<{
+    filtreCycle: FiltreCycleFrais;
+    niveau: string;
+    montant: number;
+  }>({ filtreCycle: "Primaire", niveau: "", montant: 0 });
 
   // Charger les frais depuis localStorage au montage
   useEffect(() => {
@@ -123,10 +102,10 @@ export default function SettingsPage() {
     setEditingTrimestre(null);
   };
 
-  const handleUpdateFrais = (niveau: string, nouveauMontant: number) => {
-    setFraisScolaires(fraisScolaires.map(f =>
-      f.niveau === niveau ? { ...f, montant: nouveauMontant } : f
-    ));
+  const handleUpdateFrais = (id: number, nouveauMontant: number) => {
+    setFraisScolaires(
+      fraisScolaires.map((f) => (f.id === id ? { ...f, montant: nouveauMontant } : f))
+    );
     setEditingFrais(null);
   };
 
@@ -137,25 +116,31 @@ export default function SettingsPage() {
   };
 
   const handleAddFrais = () => {
-    if (!newFrais.niveau || newFrais.montant <= 0) {
+    if (!newFraisForm.niveau || newFraisForm.montant <= 0) {
       alert("Veuillez remplir tous les champs correctement");
       return;
     }
 
-    // Vérifier si le niveau existe déjà
-    if (fraisScolaires.find(f => f.niveau.toLowerCase() === newFrais.niveau.toLowerCase())) {
+    if (
+      fraisScolaires.find(
+        (f) => f.niveau.toLowerCase() === newFraisForm.niveau.toLowerCase()
+      )
+    ) {
       alert("Ce niveau existe déjà !");
       return;
     }
 
-    const nouveauFrais = {
-      id: fraisScolaires.length + 1,
-      niveau: newFrais.niveau,
-      montant: newFrais.montant,
+    const nextId = fraisScolaires.reduce((m, f) => Math.max(m, f.id), 0) + 1;
+    const cycle = inferCycleFromNiveau(newFraisForm.niveau);
+    const nouveauFrais: FraisScolaireItem = {
+      id: nextId,
+      niveau: newFraisForm.niveau,
+      montant: newFraisForm.montant,
+      cycle,
     };
 
     setFraisScolaires([...fraisScolaires, nouveauFrais]);
-    setNewFrais({ niveau: "", montant: 0 });
+    setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
     setIsAddFraisOpen(false);
   };
 
@@ -374,7 +359,10 @@ export default function SettingsPage() {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsAddFraisOpen(true)}
+              onClick={() => {
+                setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
+                setIsAddFraisOpen(true);
+              }}
               className="flex items-center gap-2 px-4 py-2.5 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20"
             >
               <Plus className="w-4 h-4" />
@@ -394,10 +382,15 @@ export default function SettingsPage() {
           {fraisScolaires.map((frais) => (
             <div key={frais.id} className="p-4 bg-muted/30 rounded-lg">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-semibold text-foreground">{frais.niveau}</span>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {frais.cycle}
+                  </p>
+                  <span className="text-sm font-semibold text-foreground">{frais.niveau}</span>
+                </div>
                 <div className="flex items-center gap-1">
                   <button
-                    onClick={() => setEditingFrais(frais)}
+                    onClick={() => setEditingFrais({ id: frais.id, montant: frais.montant })}
                     className="p-1.5 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
                   >
                     <Edit className="w-4 h-4" />
@@ -411,17 +404,22 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              {editingFrais?.niveau === frais.niveau ? (
+              {editingFrais?.id === frais.id ? (
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
                     value={editingFrais.montant}
-                    onChange={(e) => setEditingFrais({ ...editingFrais, montant: parseInt(e.target.value) || 0 })}
+                    onChange={(e) =>
+                      setEditingFrais({
+                        ...editingFrais,
+                        montant: parseInt(e.target.value, 10) || 0,
+                      })
+                    }
                     className="flex-1 px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring text-sm"
                     autoFocus
                   />
                   <button
-                    onClick={() => handleUpdateFrais(editingFrais.niveau, editingFrais.montant)}
+                    onClick={() => handleUpdateFrais(editingFrais.id, editingFrais.montant)}
                     className="px-3 py-2 bg-success hover:bg-success/90 text-white rounded-lg transition text-sm font-medium"
                   >
                     ✓
@@ -460,22 +458,53 @@ export default function SettingsPage() {
         {/* Modal ajout niveau */}
         {isAddFraisOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsAddFraisOpen(false)}></div>
+            <div
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+              onClick={() => {
+                setIsAddFraisOpen(false);
+                setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
+              }}
+            ></div>
             <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6">
               <h3 className="text-lg font-semibold text-foreground mb-4">Ajouter un niveau de frais</h3>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-2">
-                    Nom du niveau <span className="text-danger">*</span>
+                    Type de cycle <span className="text-danger">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={newFrais.niveau}
-                    onChange={(e) => setNewFrais({ ...newFrais, niveau: e.target.value })}
+                  <select
+                    value={newFraisForm.filtreCycle}
+                    onChange={(e) => {
+                      const filtreCycle = e.target.value as FiltreCycleFrais;
+                      setNewFraisForm({ filtreCycle, niveau: "", montant: newFraisForm.montant });
+                    }}
                     className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
-                    placeholder="Ex: 5ème, Maternelle, etc."
-                  />
+                  >
+                    <option value="Primaire">Primaire (Maternelle au CM2)</option>
+                    <option value="Secondaire">Secondaire (6ème à la Terminale)</option>
+                    <option value="Les_deux">Les deux (tous les niveaux)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Niveau de classe <span className="text-danger">*</span>
+                  </label>
+                  <select
+                    value={newFraisForm.niveau}
+                    onChange={(e) =>
+                      setNewFraisForm({ ...newFraisForm, niveau: e.target.value })
+                    }
+                    className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                  >
+                    <option value="">Sélectionner un niveau</option>
+                    {niveauxPourFiltreCycle(newFraisForm.filtreCycle).map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -484,8 +513,13 @@ export default function SettingsPage() {
                   </label>
                   <input
                     type="number"
-                    value={newFrais.montant || ""}
-                    onChange={(e) => setNewFrais({ ...newFrais, montant: parseInt(e.target.value) || 0 })}
+                    value={newFraisForm.montant || ""}
+                    onChange={(e) =>
+                      setNewFraisForm({
+                        ...newFraisForm,
+                        montant: parseInt(e.target.value, 10) || 0,
+                      })
+                    }
                     className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
                     placeholder="50000"
                   />
@@ -496,7 +530,7 @@ export default function SettingsPage() {
                 <button
                   onClick={() => {
                     setIsAddFraisOpen(false);
-                    setNewFrais({ niveau: "", montant: 0 });
+                    setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
                   }}
                   className="px-4 py-2 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
                 >
