@@ -1,15 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2, DollarSign } from "lucide-react";
+import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2, DollarSign, ListPlus } from "lucide-react";
 import AddMatiereModal from "@/components/AddMatiereModal";
 import AddTrimestreModal from "@/components/AddTrimestreModal";
 import type { FiltreCycleFrais } from "@/lib/cycles-scolaires-ci";
 import { inferCycleFromNiveau, niveauxPourFiltreCycle } from "@/lib/cycles-scolaires-ci";
-import type { FraisScolaireItem } from "@/lib/frais-scolaires";
+import type { FraisDraftLine, FraisScolaireItem } from "@/lib/frais-scolaires";
 import {
+  clearFraisDraftStorage,
+  createDraftLine,
   getDefaultFrais,
+  loadFraisDraftFromStorage,
   loadFraisFromStorage,
+  saveFraisDraftToStorage,
   saveFraisToStorage,
 } from "@/lib/frais-scolaires";
 
@@ -55,6 +59,7 @@ export default function SettingsPage() {
     niveau: string;
     montant: number;
   }>({ filtreCycle: "Primaire", niveau: "", montant: 0 });
+  const [fraisDraftQueue, setFraisDraftQueue] = useState<FraisDraftLine[]>([]);
 
   // Charger les frais depuis localStorage au montage
   useEffect(() => {
@@ -115,33 +120,75 @@ export default function SettingsPage() {
     console.log("Frais scolaires sauvegardés:", fraisScolaires);
   };
 
-  const handleAddFrais = () => {
+  const persistDraft = (next: FraisDraftLine[]) => {
+    setFraisDraftQueue(next);
+    saveFraisDraftToStorage(next);
+  };
+
+  const handleAddFraisToDraft = () => {
     if (!newFraisForm.niveau || newFraisForm.montant <= 0) {
       alert("Veuillez remplir tous les champs correctement");
       return;
     }
 
-    if (
-      fraisScolaires.find(
-        (f) => f.niveau.toLowerCase() === newFraisForm.niveau.toLowerCase()
-      )
-    ) {
-      alert("Ce niveau existe déjà !");
+    const niveauLower = newFraisForm.niveau.toLowerCase();
+    if (fraisScolaires.some((f) => f.niveau.toLowerCase() === niveauLower)) {
+      alert("Ce niveau existe déjà dans les frais enregistrés.");
+      return;
+    }
+    if (fraisDraftQueue.some((f) => f.niveau.toLowerCase() === niveauLower)) {
+      alert("Ce niveau est déjà dans la liste d'attente.");
       return;
     }
 
-    const nextId = fraisScolaires.reduce((m, f) => Math.max(m, f.id), 0) + 1;
     const cycle = inferCycleFromNiveau(newFraisForm.niveau);
-    const nouveauFrais: FraisScolaireItem = {
-      id: nextId,
-      niveau: newFraisForm.niveau,
-      montant: newFraisForm.montant,
-      cycle,
-    };
+    const line = createDraftLine(newFraisForm.niveau, newFraisForm.montant, cycle);
+    persistDraft([...fraisDraftQueue, line]);
+    setNewFraisForm((prev) => ({ ...prev, niveau: "" }));
+  };
 
-    setFraisScolaires([...fraisScolaires, nouveauFrais]);
+  const handleRemoveDraftLine = (draftId: string) => {
+    persistDraft(fraisDraftQueue.filter((l) => l.draftId !== draftId));
+  };
+
+  const handleClearDraftQueue = () => {
+    persistDraft([]);
+  };
+
+  const handleValidateFraisDraft = () => {
+    if (fraisDraftQueue.length === 0) {
+      alert("Ajoutez au moins un niveau à la liste avant d'enregistrer.");
+      return;
+    }
+
+    const count = fraisDraftQueue.length;
+    let maxId = fraisScolaires.reduce((m, f) => Math.max(m, f.id), 0);
+    const merged = [...fraisScolaires];
+    for (const line of fraisDraftQueue) {
+      if (merged.some((f) => f.niveau.toLowerCase() === line.niveau.toLowerCase())) {
+        continue;
+      }
+      maxId += 1;
+      merged.push({
+        id: maxId,
+        niveau: line.niveau,
+        montant: line.montant,
+        cycle: line.cycle,
+      });
+    }
+
+    setFraisScolaires(merged);
+    saveFraisToStorage(merged);
+    clearFraisDraftStorage();
+    setFraisDraftQueue([]);
     setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
     setIsAddFraisOpen(false);
+    alert(`${count} niveau(x) ajouté(s) et enregistré(s) localement.`);
+  };
+
+  const closeAddFraisModal = () => {
+    setIsAddFraisOpen(false);
+    setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
   };
 
   const handleDeleteFrais = (id: number) => {
@@ -361,6 +408,7 @@ export default function SettingsPage() {
             <button
               onClick={() => {
                 setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
+                setFraisDraftQueue(loadFraisDraftFromStorage());
                 setIsAddFraisOpen(true);
               }}
               className="flex items-center gap-2 px-4 py-2.5 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20"
@@ -458,89 +506,143 @@ export default function SettingsPage() {
         {/* Modal ajout niveau */}
         {isAddFraisOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-              onClick={() => {
-                setIsAddFraisOpen(false);
-                setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
-              }}
-            ></div>
-            <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6">
-              <h3 className="text-lg font-semibold text-foreground mb-4">Ajouter un niveau de frais</h3>
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={closeAddFraisModal}></div>
+            <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-1">Ajouter un niveau de frais</h3>
+              <p className="text-xs text-muted-foreground mb-4">
+                Les lignes ajoutées restent en brouillon (navigateur) jusqu&apos;à « Enregistrer les ajouts » — prêt pour un
+                envoi Supabase ultérieur.
+              </p>
 
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Type de cycle <span className="text-danger">*</span>
-                  </label>
-                  <select
-                    value={newFraisForm.filtreCycle}
-                    onChange={(e) => {
-                      const filtreCycle = e.target.value as FiltreCycleFrais;
-                      setNewFraisForm({ filtreCycle, niveau: "", montant: newFraisForm.montant });
-                    }}
-                    className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+                <div className="min-w-0 flex-1 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Type de cycle <span className="text-danger">*</span>
+                    </label>
+                    <select
+                      value={newFraisForm.filtreCycle}
+                      onChange={(e) => {
+                        const filtreCycle = e.target.value as FiltreCycleFrais;
+                        setNewFraisForm({ filtreCycle, niveau: "", montant: newFraisForm.montant });
+                      }}
+                      className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                    >
+                      <option value="Primaire">Primaire (Maternelle au CM2)</option>
+                      <option value="Secondaire">Secondaire (6ème à la Terminale)</option>
+                      <option value="Les_deux">Les deux (tous les niveaux)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Niveau de classe <span className="text-danger">*</span>
+                    </label>
+                    <select
+                      value={newFraisForm.niveau}
+                      onChange={(e) =>
+                        setNewFraisForm({ ...newFraisForm, niveau: e.target.value })
+                      }
+                      className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                    >
+                      <option value="">Sélectionner un niveau</option>
+                      {niveauxPourFiltreCycle(newFraisForm.filtreCycle).map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-2">
+                      Montant annuel (FCFA) <span className="text-danger">*</span>
+                    </label>
+                    <input
+                      type="number"
+                      value={newFraisForm.montant || ""}
+                      onChange={(e) =>
+                        setNewFraisForm({
+                          ...newFraisForm,
+                          montant: parseInt(e.target.value, 10) || 0,
+                        })
+                      }
+                      className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                      placeholder="50000"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddFraisToDraft}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-2.5 font-medium text-success transition hover:bg-success/20"
                   >
-                    <option value="Primaire">Primaire (Maternelle au CM2)</option>
-                    <option value="Secondaire">Secondaire (6ème à la Terminale)</option>
-                    <option value="Les_deux">Les deux (tous les niveaux)</option>
-                  </select>
+                    <ListPlus className="h-4 w-4" />
+                    Ajouter à la liste
+                  </button>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Niveau de classe <span className="text-danger">*</span>
-                  </label>
-                  <select
-                    value={newFraisForm.niveau}
-                    onChange={(e) =>
-                      setNewFraisForm({ ...newFraisForm, niveau: e.target.value })
-                    }
-                    className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
-                  >
-                    <option value="">Sélectionner un niveau</option>
-                    {niveauxPourFiltreCycle(newFraisForm.filtreCycle).map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-2">
-                    Montant annuel (FCFA) <span className="text-danger">*</span>
-                  </label>
-                  <input
-                    type="number"
-                    value={newFraisForm.montant || ""}
-                    onChange={(e) =>
-                      setNewFraisForm({
-                        ...newFraisForm,
-                        montant: parseInt(e.target.value, 10) || 0,
-                      })
-                    }
-                    className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
-                    placeholder="50000"
-                  />
-                </div>
+                <aside className="w-full shrink-0 rounded-xl border border-border bg-muted/20 p-4 lg:w-[240px] lg:self-stretch">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      En attente
+                    </p>
+                    {fraisDraftQueue.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleClearDraftQueue}
+                        className="text-xs font-medium text-danger hover:underline"
+                      >
+                        Tout vider
+                      </button>
+                    )}
+                  </div>
+                  {fraisDraftQueue.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">Aucun niveau pour l&apos;instant.</p>
+                  ) : (
+                    <ul className="max-h-[min(280px,40vh)] space-y-2 overflow-y-auto pr-1">
+                      {fraisDraftQueue.map((line) => (
+                        <li
+                          key={line.draftId}
+                          className="flex items-start justify-between gap-2 rounded-lg border border-border bg-card px-2.5 py-2 text-sm"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-foreground">{line.niveau}</p>
+                            <p className="text-xs text-muted-foreground">{line.cycle}</p>
+                            <p className="text-xs font-semibold text-warning">
+                              {line.montant.toLocaleString()} FCFA
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDraftLine(line.draftId)}
+                            className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-danger"
+                            aria-label={`Retirer ${line.niveau}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </aside>
               </div>
 
-              <div className="flex items-center justify-end gap-3 mt-6">
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
                 <button
-                  onClick={() => {
-                    setIsAddFraisOpen(false);
-                    setNewFraisForm({ filtreCycle: "Primaire", niveau: "", montant: 0 });
-                  }}
+                  type="button"
+                  onClick={closeAddFraisModal}
                   className="px-4 py-2 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
                 >
-                  Annuler
+                  Fermer
                 </button>
                 <button
-                  onClick={handleAddFrais}
-                  className="px-4 py-2 bg-success hover:bg-success/90 text-white rounded-lg transition font-medium"
+                  type="button"
+                  disabled={fraisDraftQueue.length === 0}
+                  onClick={handleValidateFraisDraft}
+                  className="px-4 py-2 bg-success hover:bg-success/90 text-white rounded-lg transition font-medium disabled:pointer-events-none disabled:opacity-50"
                 >
-                  Ajouter
+                  Enregistrer les ajouts
                 </button>
               </div>
             </div>
