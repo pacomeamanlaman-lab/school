@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Edit, Trash2, Phone, Mail, MapPin, Calendar, User, Users } from "lucide-react";
+import { ArrowLeft, Edit, Trash2, Phone, Mail, MapPin, Calendar, User, Users, FileText, Download, Eye } from "lucide-react";
 
 // Données de démonstration (à remplacer par Supabase)
 const studentData = {
@@ -17,12 +17,39 @@ const studentData = {
   phone: "+33 6 12 34 56 78",
   adresse: "12 Rue de l'École, 75001 Paris",
   status: "active",
+  groupeSanguin: "A+",
+  maladiesParticulieres: "Asthme léger",
+  pieceNaissance: "2014/03/CM2/001",
   parent: {
     name: "Jean Dupont",
     phone: "+33 6 98 76 54 32",
+    phoneSecondaire: "+33 6 23 45 67 89",
     email: "jean.dupont@example.com",
   },
   dateInscription: "2023-09-01",
+  documents: [
+    {
+      id: 1,
+      type: "Extrait de naissance",
+      nomFichier: "extrait_naissance_marie_dupont.pdf",
+      dateUpload: "2023-09-01",
+      taille: "245 KB",
+    },
+    {
+      id: 2,
+      type: "Certificat médical",
+      nomFichier: "certificat_medical_2024.pdf",
+      dateUpload: "2024-01-15",
+      taille: "182 KB",
+    },
+    {
+      id: 3,
+      type: "Photo d'identité",
+      nomFichier: "photo_marie.jpg",
+      dateUpload: "2023-09-01",
+      taille: "324 KB",
+    },
+  ],
   notes: [
     { matiere: "Français", note: 15.5, trimestre: "T1" },
     { matiere: "Mathématiques", note: 17.0, trimestre: "T1" },
@@ -38,6 +65,19 @@ const studentData = {
 export default function StudentDetailPage() {
   const router = useRouter();
   const params = useParams();
+
+  const handleDownload = (document: any) => {
+    // MVP: Simuler le téléchargement
+    // En Phase 3 Supabase: utiliser supabase.storage.download()
+    alert(`Téléchargement de ${document.nomFichier}...`);
+    console.log("Document à télécharger:", document);
+  };
+
+  const handlePreview = (document: any) => {
+    // MVP: Simuler la prévisualisation
+    alert(`Prévisualisation de ${document.nomFichier}...`);
+    console.log("Document à prévisualiser:", document);
+  };
 
   return (
     <div className="space-y-6">
@@ -257,6 +297,70 @@ export default function StudentDetailPage() {
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">Aucune absence enregistrée</p>
+            )}
+          </div>
+
+          {/* Documents administratifs */}
+          <div className="bg-card border border-border rounded-xl p-6">
+            <h3 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              Documents administratifs
+            </h3>
+            {studentData.documents && studentData.documents.length > 0 ? (
+              <div className="space-y-3">
+                {studentData.documents.map((document) => (
+                  <div key={document.id} className="p-3 bg-muted rounded-lg hover:bg-accent transition group">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <FileText className="w-5 h-5 text-primary" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {document.nomFichier}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {document.type}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-xs text-muted-foreground">
+                              {document.taille}
+                            </span>
+                            <span className="text-xs text-muted-foreground">•</span>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(document.dateUpload).toLocaleDateString("fr-FR")}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition">
+                        <button
+                          onClick={() => handlePreview(document)}
+                          className="p-1.5 hover:bg-info/10 rounded-lg transition text-info"
+                          title="Prévisualiser"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDownload(document)}
+                          className="p-1.5 hover:bg-success/10 rounded-lg transition text-success"
+                          title="Télécharger"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-6">
+                <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+                <p className="text-sm text-muted-foreground">Aucun document disponible</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Les documents seront uploadés lors de l'inscription
+                </p>
+              </div>
             )}
           </div>
         </div>

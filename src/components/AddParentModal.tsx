@@ -15,6 +15,7 @@ export default function AddParentModal({ isOpen, onClose, onSubmit, parent }: Ad
   const [formData, setFormData] = useState({
     nom: "",
     telephone: "",
+    telephoneSecondaire: "",
     email: "",
     adresse: "",
     profession: "",
@@ -25,6 +26,7 @@ export default function AddParentModal({ isOpen, onClose, onSubmit, parent }: Ad
       setFormData({
         nom: parent.nom || "",
         telephone: parent.telephone || "",
+        telephoneSecondaire: parent.telephoneSecondaire || "",
         email: parent.email || "",
         adresse: parent.adresse || "",
         profession: parent.profession || "",
@@ -33,6 +35,7 @@ export default function AddParentModal({ isOpen, onClose, onSubmit, parent }: Ad
       setFormData({
         nom: "",
         telephone: "",
+        telephoneSecondaire: "",
         email: "",
         adresse: "",
         profession: "",
@@ -76,7 +79,7 @@ export default function AddParentModal({ isOpen, onClose, onSubmit, parent }: Ad
 
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
-              Téléphone <span className="text-danger">*</span>
+              Téléphone principal <span className="text-danger">*</span>
             </label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -93,6 +96,23 @@ export default function AddParentModal({ isOpen, onClose, onSubmit, parent }: Ad
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Téléphone secondaire
+            </label>
+            <div className="relative">
+              <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <input
+                type="tel"
+                name="telephoneSecondaire"
+                value={formData.telephoneSecondaire}
+                onChange={handleChange}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                placeholder="+33 6 98 76 54 32"
+              />
+            </div>
+          </div>
+
+          <div className="md:col-span-2">
             <label className="block text-sm font-medium text-foreground mb-2">
               Email <span className="text-danger">*</span>
             </label>

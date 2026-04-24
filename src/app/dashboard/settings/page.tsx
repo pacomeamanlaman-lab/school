@@ -1,9 +1,42 @@
 "use client";
 
-import { useState } from "react";
-import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2, DollarSign } from "lucide-react";
 import AddMatiereModal from "@/components/AddMatiereModal";
 import AddTrimestreModal from "@/components/AddTrimestreModal";
+
+// Utilitaire pour gérer les frais scolaires dans localStorage
+const FRAIS_STORAGE_KEY = "school_frais_scolaires";
+
+const getDefaultFrais = () => [
+  { id: 1, niveau: "CP", montant: 45000 },
+  { id: 2, niveau: "CE1", montant: 50000 },
+  { id: 3, niveau: "CE2", montant: 55000 },
+  { id: 4, niveau: "CM1", montant: 60000 },
+  { id: 5, niveau: "CM2", montant: 75000 },
+  { id: 6, niveau: "6ème", montant: 100000 },
+];
+
+const saveFraisToStorage = (frais: any[]) => {
+  if (typeof window !== "undefined") {
+    localStorage.setItem(FRAIS_STORAGE_KEY, JSON.stringify(frais));
+  }
+};
+
+const loadFraisFromStorage = () => {
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem(FRAIS_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : getDefaultFrais();
+  }
+  return getDefaultFrais();
+};
+
+// Fonction exportée pour être utilisée partout
+export const getMontantParClasse = (classe: string): number => {
+  const frais = loadFraisFromStorage();
+  const found = frais.find((f: any) => f.niveau === classe);
+  return found ? found.montant : 50000; // Montant par défaut si classe non trouvée
+};
 
 export default function SettingsPage() {
   const [schoolInfo, setSchoolInfo] = useState({
@@ -38,6 +71,16 @@ export default function SettingsPage() {
     { id: 7, nom: "Arts plastiques", coefficient: 1, couleur: "#ec4899" },
     { id: 8, nom: "Musique", coefficient: 1, couleur: "#6366f1" },
   ]);
+
+  const [fraisScolaires, setFraisScolaires] = useState(getDefaultFrais());
+  const [editingFrais, setEditingFrais] = useState<{ niveau: string; montant: number } | null>(null);
+  const [isAddFraisOpen, setIsAddFraisOpen] = useState(false);
+  const [newFrais, setNewFrais] = useState({ niveau: "", montant: 0 });
+
+  // Charger les frais depuis localStorage au montage
+  useEffect(() => {
+    setFraisScolaires(loadFraisFromStorage());
+  }, []);
 
   const [isAddMatiereOpen, setIsAddMatiereOpen] = useState(false);
   const [editingMatiere, setEditingMatiere] = useState<any>(null);
@@ -78,6 +121,48 @@ export default function SettingsPage() {
   const handleEditTrimestre = (updatedTrimestre: any) => {
     setTrimestres(trimestres.map(t => t.id === updatedTrimestre.id ? updatedTrimestre : t));
     setEditingTrimestre(null);
+  };
+
+  const handleUpdateFrais = (niveau: string, nouveauMontant: number) => {
+    setFraisScolaires(fraisScolaires.map(f =>
+      f.niveau === niveau ? { ...f, montant: nouveauMontant } : f
+    ));
+    setEditingFrais(null);
+  };
+
+  const handleSaveFrais = () => {
+    saveFraisToStorage(fraisScolaires);
+    alert("Configuration des frais scolaires enregistrée avec succès !");
+    console.log("Frais scolaires sauvegardés:", fraisScolaires);
+  };
+
+  const handleAddFrais = () => {
+    if (!newFrais.niveau || newFrais.montant <= 0) {
+      alert("Veuillez remplir tous les champs correctement");
+      return;
+    }
+
+    // Vérifier si le niveau existe déjà
+    if (fraisScolaires.find(f => f.niveau.toLowerCase() === newFrais.niveau.toLowerCase())) {
+      alert("Ce niveau existe déjà !");
+      return;
+    }
+
+    const nouveauFrais = {
+      id: fraisScolaires.length + 1,
+      niveau: newFrais.niveau,
+      montant: newFrais.montant,
+    };
+
+    setFraisScolaires([...fraisScolaires, nouveauFrais]);
+    setNewFrais({ niveau: "", montant: 0 });
+    setIsAddFraisOpen(false);
+  };
+
+  const handleDeleteFrais = (id: number) => {
+    if (confirm("Êtes-vous sûr de vouloir supprimer ce niveau de frais ?")) {
+      setFraisScolaires(fraisScolaires.filter(f => f.id !== id));
+    }
   };
 
   return (
@@ -273,6 +358,160 @@ export default function SettingsPage() {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Frais scolaires par classe */}
+      <div className="bg-card border border-border rounded-xl p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-warning" />
+              Frais scolaires par niveau
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Montant annuel appliqué automatiquement lors de l'inscription d'un élève
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsAddFraisOpen(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter niveau
+            </button>
+            <button
+              onClick={handleSaveFrais}
+              className="flex items-center gap-2 px-4 py-2.5 bg-warning/10 hover:bg-warning/20 text-warning rounded-lg transition font-medium border border-warning/20"
+            >
+              <Save className="w-4 h-4" />
+              Enregistrer
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {fraisScolaires.map((frais) => (
+            <div key={frais.id} className="p-4 bg-muted/30 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-foreground">{frais.niveau}</span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setEditingFrais(frais)}
+                    className="p-1.5 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
+                  >
+                    <Edit className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => handleDeleteFrais(frais.id)}
+                    className="p-1.5 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {editingFrais?.niveau === frais.niveau ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={editingFrais.montant}
+                    onChange={(e) => setEditingFrais({ ...editingFrais, montant: parseInt(e.target.value) || 0 })}
+                    className="flex-1 px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring text-sm"
+                    autoFocus
+                  />
+                  <button
+                    onClick={() => handleUpdateFrais(editingFrais.niveau, editingFrais.montant)}
+                    className="px-3 py-2 bg-success hover:bg-success/90 text-white rounded-lg transition text-sm font-medium"
+                  >
+                    ✓
+                  </button>
+                  <button
+                    onClick={() => setEditingFrais(null)}
+                    className="px-3 py-2 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition text-sm font-medium"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-warning">{frais.montant.toLocaleString()}</span>
+                  <span className="text-sm text-muted-foreground">FCFA</span>
+                </div>
+              )}
+
+              <p className="text-xs text-muted-foreground mt-2">
+                par an
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 p-4 bg-info/10 border border-info/20 rounded-lg">
+          <p className="text-sm text-info flex items-start gap-2">
+            <span className="font-bold">ℹ️</span>
+            <span>
+              Ces montants seront appliqués automatiquement lors de l'inscription d'un nouvel élève.
+              Un dossier financier sera créé dans le module Comptabilité avec le montant correspondant au niveau de classe.
+            </span>
+          </p>
+        </div>
+
+        {/* Modal ajout niveau */}
+        {isAddFraisOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsAddFraisOpen(false)}></div>
+            <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6">
+              <h3 className="text-lg font-semibold text-foreground mb-4">Ajouter un niveau de frais</h3>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Nom du niveau <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newFrais.niveau}
+                    onChange={(e) => setNewFrais({ ...newFrais, niveau: e.target.value })}
+                    className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                    placeholder="Ex: 5ème, Maternelle, etc."
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Montant annuel (FCFA) <span className="text-danger">*</span>
+                  </label>
+                  <input
+                    type="number"
+                    value={newFrais.montant || ""}
+                    onChange={(e) => setNewFrais({ ...newFrais, montant: parseInt(e.target.value) || 0 })}
+                    className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                    placeholder="50000"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setIsAddFraisOpen(false);
+                    setNewFrais({ niveau: "", montant: 0 });
+                  }}
+                  className="px-4 py-2 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={handleAddFrais}
+                  className="px-4 py-2 bg-success hover:bg-success/90 text-white rounded-lg transition font-medium"
+                >
+                  Ajouter
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Matières */}

@@ -2,7 +2,10 @@
 
 ## État actuel
 ✅ **MVP Frontend complet** avec CRUD fonctionnel en state local
-✅ **Tous les modules** : Élèves, Classes, Personnel, Parents, Absences, Notes, Bulletins, Paramètres
+✅ **Tous les modules** : Élèves, Classes, Personnel, Parents, Absences, Notes, Bulletins, **Comptabilité**, Paramètres
+✅ **Nouveaux champs élèves** : Groupe sanguin, maladies particulières, téléphone secondaire parent
+✅ **Upload de documents** : Système d'upload MVP (base64) pour pièces administratives
+✅ **Module Comptabilité** : Gestion des frais scolaires et paiements (Option A pure)
 ✅ **Build production** fonctionnel
 
 ---
@@ -77,11 +80,14 @@
   - `classe_id` (FK)
   - `status` (active, inactive, transferred)
   - `photo_url`
+  - **`groupe_sanguin`** (TEXT: A+, A-, B+, B-, AB+, AB-, O+, O-, nullable)
+  - **`maladies_particulieres`** (TEXT: asthme, allergies, diabète, etc., nullable)
 
 - [ ] **Table `parents`** - Parents/Tuteurs
   - `id` (UUID)
   - `user_id` (FK vers profiles, nullable)
   - `nom`, `telephone`, `email`
+  - **`telephone_secondaire`** (TEXT, nullable - numéro d'urgence alternatif)
   - `adresse`, `profession`
 
 - [ ] **Table `student_parents`** - Relation Many-to-Many
@@ -125,6 +131,40 @@
   - `jour` (lundi, mardi, mercredi, jeudi, vendredi)
   - `heure_debut`, `heure_fin`
 
+- [ ] **Table `frais_scolaires`** - Gestion financière
+  - `id` (UUID)
+  - `student_id` (FK vers students)
+  - `annee_scolaire_id` (FK vers annees_scolaires)
+  - `montant_total` (DECIMAL - montant annuel)
+  - `montant_paye` (DECIMAL - montant déjà versé)
+  - `statut_paiement` (ENUM: paye, partiel, impaye)
+  - `date_limite` (DATE, nullable)
+  - `mode_paiement` (TEXT: especes, cheque, virement, nullable)
+  - `remarques` (TEXT, nullable)
+  - `created_at`, `updated_at`
+
+- [ ] **Table `paiements`** - Historique des paiements
+  - `id` (UUID)
+  - `frais_scolaire_id` (FK vers frais_scolaires)
+  - `montant` (DECIMAL)
+  - `date_paiement` (DATE)
+  - `mode_paiement` (TEXT: especes, cheque, virement)
+  - `numero_recu` (TEXT, nullable)
+  - `remarques` (TEXT, nullable)
+  - `created_by` (FK vers profiles)
+  - `created_at`
+
+- [ ] **Table `documents_eleves`** - Pièces administratives
+  - `id` (UUID)
+  - `student_id` (FK vers students)
+  - `type_document` (ENUM: extrait_naissance, certificat_medical, photo_identite, bulletin_ancien, autre)
+  - `nom_fichier` (TEXT)
+  - `file_url` (TEXT - URL Supabase Storage)
+  - `numero_piece` (TEXT, nullable - ex: numéro extrait naissance)
+  - `date_expiration` (DATE, nullable)
+  - `uploaded_at` (TIMESTAMPTZ DEFAULT NOW())
+  - `uploaded_by` (FK vers profiles)
+
 ### 3.3 Sécurité RLS (Row Level Security) (2-3h)
 - [ ] **Policies `profiles`**
   - SELECT : Tous authentifiés peuvent lire leurs propres données
@@ -147,6 +187,15 @@
 - [ ] **Policies `notes`**
   - SELECT : Enseignants (leurs matières), Parents (leurs enfants), Admin (tout)
   - INSERT/UPDATE : Enseignants (leurs matières) et Admin
+
+- [ ] **Policies `frais_scolaires`**
+  - SELECT : Admin (tout), Parents (leurs enfants uniquement)
+  - INSERT/UPDATE/DELETE : Admin et Comptable uniquement
+
+- [ ] **Policies `documents_eleves`**
+  - SELECT : Admin (tout), Parents (leurs enfants), Enseignant (lecture seule)
+  - INSERT : Admin et Personnel autorisé
+  - DELETE : Admin uniquement
 
 - [ ] **Policies générales**
   - Filtrage par `etablissement_id` pour multi-tenant futur

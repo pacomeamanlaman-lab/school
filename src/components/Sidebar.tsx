@@ -17,6 +17,7 @@ import {
   FileText,
   Calendar,
   UsersRound,
+  DollarSign,
 } from "lucide-react";
 
 const menuItems = [
@@ -64,6 +65,11 @@ const menuItems = [
     title: "Bulletins",
     icon: FileText,
     href: "/dashboard/bulletins",
+  },
+  {
+    title: "Comptabilité",
+    icon: DollarSign,
+    href: "/dashboard/comptabilite",
   },
   {
     title: "Paramètres",

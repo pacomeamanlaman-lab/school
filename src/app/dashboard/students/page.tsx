@@ -6,6 +6,28 @@ import { Plus, Search, Filter, MoreVertical, Eye, Edit, Trash2, Download, FileSp
 import AddStudentModal from "@/components/AddStudentModal";
 import { exportStudentsToExcel } from "@/utils/excelExport";
 
+// Importer la fonction de détection des frais
+const getMontantParClasse = (classe: string): number => {
+  if (typeof window !== "undefined") {
+    const stored = localStorage.getItem("school_frais_scolaires");
+    if (stored) {
+      const frais = JSON.parse(stored);
+      const found = frais.find((f: any) => f.niveau === classe);
+      return found ? found.montant : 50000;
+    }
+  }
+  // Valeurs par défaut si pas encore configuré
+  const defaultFrais: Record<string, number> = {
+    "CP": 45000,
+    "CE1": 50000,
+    "CE2": 55000,
+    "CM1": 60000,
+    "CM2": 75000,
+    "6ème": 100000,
+  };
+  return defaultFrais[classe] || 50000;
+};
+
 // Données de démonstration
 const studentsData = [
   {
@@ -17,6 +39,10 @@ const studentsData = [
     dateNaissance: "2014-03-15",
     genre: "F",
     status: "active",
+    groupeSanguin: "A+",
+    maladiesParticulieres: "Asthme léger",
+    pieceNaissance: "2014/03/CM2/001",
+    parentPhoneSecondaire: "+33 6 23 45 67 89",
   },
   {
     id: 2,
@@ -27,6 +53,10 @@ const studentsData = [
     dateNaissance: "2016-07-22",
     genre: "M",
     status: "active",
+    groupeSanguin: "O+",
+    maladiesParticulieres: "",
+    pieceNaissance: "2016/07/CE1/002",
+    parentPhoneSecondaire: "",
   },
   {
     id: 3,
@@ -37,6 +67,10 @@ const studentsData = [
     dateNaissance: "2013-11-08",
     genre: "F",
     status: "active",
+    groupeSanguin: "B+",
+    maladiesParticulieres: "Allergie aux arachides",
+    pieceNaissance: "2013/11/6EME/003",
+    parentPhoneSecondaire: "+33 6 45 67 89 01",
   },
   {
     id: 4,
@@ -47,6 +81,10 @@ const studentsData = [
     dateNaissance: "2014-05-19",
     genre: "M",
     status: "active",
+    groupeSanguin: "AB+",
+    maladiesParticulieres: "",
+    pieceNaissance: "2014/05/CM1/004",
+    parentPhoneSecondaire: "+33 6 78 90 12 34",
   },
   {
     id: 5,
@@ -57,6 +95,10 @@ const studentsData = [
     dateNaissance: "2017-09-12",
     genre: "F",
     status: "active",
+    groupeSanguin: "O-",
+    maladiesParticulieres: "Diabète type 1",
+    pieceNaissance: "2017/09/CP/005",
+    parentPhoneSecondaire: "",
   },
 ];
 
@@ -88,8 +130,32 @@ export default function StudentsPage() {
       dateNaissance: newStudent.dateNaissance,
       genre: newStudent.genre,
       status: "active",
+      groupeSanguin: newStudent.groupeSanguin || "",
+      maladiesParticulieres: newStudent.maladiesParticulieres || "",
+      pieceNaissance: newStudent.pieceNaissance || "",
+      parentPhoneSecondaire: newStudent.parentPhoneSecondaire || "",
     };
+
     setStudents([...students, student]);
+
+    // 🎯 DÉTECTION AUTOMATIQUE : Créer le dossier financier
+    const montantDetecte = getMontantParClasse(newStudent.classe);
+    const dossierFinancier = {
+      studentId: student.id,
+      studentName: `${newStudent.firstName} ${newStudent.lastName}`,
+      classe: newStudent.classe,
+      montantTotal: montantDetecte,
+      montantPaye: 0,
+      statutPaiement: "impaye",
+      dernierPaiement: null,
+    };
+
+    // Sauvegarder dans localStorage pour que Comptabilité le récupère
+    const existingFrais = JSON.parse(localStorage.getItem("school_frais_eleves") || "[]");
+    localStorage.setItem("school_frais_eleves", JSON.stringify([...existingFrais, dossierFinancier]));
+
+    console.log(`✅ Dossier financier créé pour ${student.firstName} ${student.lastName}:`, dossierFinancier);
+
     setIsAddModalOpen(false);
   };
 
