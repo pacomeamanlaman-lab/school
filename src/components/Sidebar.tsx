@@ -11,6 +11,7 @@ import {
   Settings,
   LogOut,
   ChevronLeft,
+  ChevronRight,
   GraduationCap,
   CheckSquare,
   ClipboardList,
@@ -88,31 +89,42 @@ export default function Sidebar() {
         collapsed ? "w-20" : "w-64"
       } bg-card border-r border-border h-screen flex flex-col transition-all duration-300 fixed left-0 top-0 z-10`}
     >
-      {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className={`flex items-center gap-3 ${collapsed ? "justify-center" : ""}`}>
+      {/* Header — bascule toujours visible (repli / dépli) */}
+      <div
+        className={`p-4 border-b border-border flex items-center gap-2 ${
+          collapsed ? "flex-col" : "justify-between"
+        }`}
+      >
+        <div
+          className={`flex items-center gap-3 min-w-0 ${collapsed ? "flex-col justify-center" : "flex-1"}`}
+        >
           <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
             <GraduationCap className="w-6 h-6 text-primary" />
           </div>
           {!collapsed && (
-            <div>
+            <div className="min-w-0">
               <h2 className="font-bold text-foreground">School Manager</h2>
               <p className="text-xs text-muted-foreground">Gestion scolaire</p>
             </div>
           )}
         </div>
-        {!collapsed && (
-          <button
-            onClick={() => setCollapsed(true)}
-            className="p-1.5 hover:bg-accent rounded-lg transition text-muted-foreground"
-          >
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          className="p-1.5 hover:bg-accent rounded-lg transition text-muted-foreground flex-shrink-0"
+          title={collapsed ? "Développer le menu" : "Réduire le menu"}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? (
+            <ChevronRight className="w-5 h-5" />
+          ) : (
             <ChevronLeft className="w-5 h-5" />
-          </button>
-        )}
+          )}
+        </button>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      {/* Navigation — min-h-0 pour que le pied du menu reste dans l’écran */}
+      <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto">
         {menuItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
@@ -136,15 +148,23 @@ export default function Sidebar() {
       </nav>
 
       {/* User section */}
-      <div className="p-3 border-t border-border">
+      <div className="p-3 border-t border-border flex-shrink-0">
         {collapsed ? (
-          <button
-            onClick={() => setCollapsed(false)}
-            className="w-full p-2.5 hover:bg-accent rounded-lg transition text-muted-foreground flex items-center justify-center"
-            title="Développer le menu"
-          >
-            <ChevronLeft className="w-5 h-5 rotate-180" />
-          </button>
+          <div className="flex flex-col items-center gap-2">
+            <div
+              className="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0"
+              title="Administrateur"
+            >
+              <span className="text-primary font-semibold text-sm">AD</span>
+            </div>
+            <button
+              type="button"
+              className="p-2 text-danger hover:bg-danger/10 rounded-lg transition"
+              title="Déconnexion"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
         ) : (
           <div className="space-y-2">
             <div className="flex items-center gap-3 px-3 py-2 bg-accent rounded-lg">
