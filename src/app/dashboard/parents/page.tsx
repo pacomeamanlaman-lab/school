@@ -96,7 +96,7 @@ export default function ParentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Gestion des Parents/Tuteurs</h1>
-          <p className="text-muted-foreground">Liste complète des parents et tuteurs légaux</p>
+          <p className="text-muted-foreground">Liste complète des parents et tuteurs légaux.</p>
         </div>
         <button
           onClick={() => setIsAddModalOpen(true)}
