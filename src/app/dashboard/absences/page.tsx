@@ -31,6 +31,7 @@ interface StudentAttendance {
   studentId: number;
   status: AttendanceStatus;
   motif?: string;
+  showWhatsAppAction?: boolean;
 }
 
 export default function AbsencesPage() {
@@ -38,15 +39,27 @@ export default function AbsencesPage() {
   const [selectedClass, setSelectedClass] = useState("CP - Classe A");
   const [attendance, setAttendance] = useState<Record<number, StudentAttendance>>({});
   const [showMotifModal, setShowMotifModal] = useState<number | null>(null);
+  const [attendanceBeforeMotifModal, setAttendanceBeforeMotifModal] = useState<StudentAttendance | null>(null);
   const [motif, setMotif] = useState("");
+  const [motifError, setMotifError] = useState("");
   const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
 
   const filteredStudents = studentsData.filter((s) => s.classe === selectedClass);
 
   const handleStatusChange = (studentId: number, status: AttendanceStatus) => {
+    if (status === "absent") {
+      setAttendanceBeforeMotifModal(attendance[studentId] ?? null);
+    }
+
     setAttendance({
       ...attendance,
-      [studentId]: { studentId, status, motif: attendance[studentId]?.motif },
+      [studentId]: {
+        studentId,
+        status,
+        motif: attendance[studentId]?.motif,
+        // Le CTA WhatsApp manuel est réservé au cas "absence non justifié".
+        showWhatsAppAction: status === "absent" ? false : undefined,
+      },
     });
 
     // Ouvrir modal pour motif si absent
@@ -55,15 +68,61 @@ export default function AbsencesPage() {
     }
   };
 
+  /** Libellé motif + message parent (cohérent avec le libellé du bouton). */
+  const MOTIF_NON_JUSTIFIE = "Absence non justifié";
+
+  const closeMotifModal = () => {
+    setShowMotifModal(null);
+    setAttendanceBeforeMotifModal(null);
+    setMotif("");
+    setMotifError("");
+  };
+
+  const cancelMotifModal = () => {
+    if (!showMotifModal) return;
+
+    const studentId = showMotifModal;
+    setAttendance((prev) => {
+      const next = { ...prev };
+      if (attendanceBeforeMotifModal) {
+        next[studentId] = attendanceBeforeMotifModal;
+      } else {
+        delete next[studentId];
+      }
+      return next;
+    });
+    closeMotifModal();
+  };
+
   const saveMotif = () => {
     if (showMotifModal) {
+      const cleanedMotif = motif.trim();
+      if (!cleanedMotif) {
+        setMotifError("Le motif est obligatoire pour enregistrer une absence justifiée.");
+        return;
+      }
       setAttendance({
         ...attendance,
-        [showMotifModal]: { ...attendance[showMotifModal], motif },
+        [showMotifModal]: { ...attendance[showMotifModal], motif: cleanedMotif, showWhatsAppAction: false },
       });
-      setShowMotifModal(null);
-      setMotif("");
+      closeMotifModal();
     }
+  };
+
+  /** Motif figé + activation du CTA WhatsApp dans la ligne élève. */
+  const saveUnjustifiedAndEnableWhatsApp = () => {
+    if (!showMotifModal) return;
+
+    setAttendance({
+      ...attendance,
+      [showMotifModal]: {
+        studentId: showMotifModal,
+        status: "absent",
+        motif: MOTIF_NON_JUSTIFIE,
+        showWhatsAppAction: true,
+      },
+    });
+    closeMotifModal();
   };
 
   const stats = {
@@ -204,6 +263,7 @@ export default function AbsencesPage() {
         <div id="absences-table" className="p-6 space-y-3">
           {filteredStudents.map((student) => {
             const studentStatus = attendance[student.id]?.status;
+            const showWhatsAppAction = attendance[student.id]?.showWhatsAppAction;
             const hasAlert = student.absencesCount >= 5;
 
             return (
@@ -245,7 +305,7 @@ export default function AbsencesPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center justify-end gap-2">
-                  {studentStatus === "absent" && (
+                  {studentStatus === "absent" && showWhatsAppAction && (
                     <button
                       type="button"
                       onClick={() =>
@@ -319,26 +379,53 @@ export default function AbsencesPage() {
 
       {showMotifModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowMotifModal(null)}></div>
-          <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={cancelMotifModal}></div>
+          <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-2xl p-6">
             <h3 className="text-lg font-semibold text-foreground mb-4">Motif d'absence</h3>
             <textarea
               value={motif}
-              onChange={(e) => setMotif(e.target.value)}
+              onChange={(e) => {
+                setMotif(e.target.value);
+                if (motifError) setMotifError("");
+              }}
               rows={4}
-              className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition resize-none"
+              className={`w-full px-4 py-2.5 bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition resize-none ${
+                motifError ? "border-danger" : "border-input"
+              }`}
               placeholder="Saisir le motif (maladie, absence justifiée...)"
             />
+            {!motif.trim() && !motifError && (
+              <p className="mt-2 text-sm text-warning">
+                Le motif est obligatoire pour valider une absence justifiée.
+              </p>
+            )}
+            {motifError && <p className="mt-2 text-sm text-danger">{motifError}</p>}
             <div className="flex items-center justify-end gap-3 mt-4">
               <button
-                onClick={() => setShowMotifModal(null)}
+                type="button"
+                onClick={cancelMotifModal}
                 className="px-4 py-2 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
               >
                 Annuler
               </button>
               <button
+                type="button"
+                onClick={saveUnjustifiedAndEnableWhatsApp}
+                className="flex items-center gap-2 whitespace-nowrap px-4 py-2 rounded-lg transition font-medium border border-[#25D366]/40 bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366]/20"
+              >
+                <MessageCircle className="h-4 w-4 shrink-0" />
+                Absence non justifié
+              </button>
+              <button
+                type="button"
                 onClick={saveMotif}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium"
+                disabled={!motif.trim()}
+                title={!motif.trim() ? "Renseigner le motif pour enregistrer" : undefined}
+                className={`px-4 py-2 text-white rounded-lg transition font-medium ${
+                  motif.trim()
+                    ? "bg-primary hover:bg-primary/90"
+                    : "bg-muted text-muted-foreground cursor-not-allowed"
+                }`}
               >
                 Enregistrer
               </button>
