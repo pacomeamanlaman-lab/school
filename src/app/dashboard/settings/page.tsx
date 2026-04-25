@@ -5,7 +5,12 @@ import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2, Coins, ListPlus }
 import AddMatiereModal from "@/components/AddMatiereModal";
 import AddTrimestreModal from "@/components/AddTrimestreModal";
 import type { FiltreCycleFrais } from "@/lib/cycles-scolaires-ci";
-import { inferCycleFromNiveau, niveauxPourFiltreCycle } from "@/lib/cycles-scolaires-ci";
+import {
+  inferCycleFromNiveau,
+  niveauxPourFiltreCycle,
+  NIVEAUX_PRIMAIRE_CI,
+  NIVEAUX_SECONDAIRE_CI,
+} from "@/lib/cycles-scolaires-ci";
 import type { FraisDraftLine, FraisScolaireItem } from "@/lib/frais-scolaires";
 import {
   clearFraisDraftStorage,
@@ -16,6 +21,20 @@ import {
   saveFraisDraftToStorage,
   saveFraisToStorage,
 } from "@/lib/frais-scolaires";
+
+type CycleMatiere = "Primaire" | "Secondaire" | "Les_deux";
+
+type MatiereItem = {
+  id: number;
+  nom: string;
+  coefficient: number;
+  couleur: string;
+  cycle: CycleMatiere;
+  niveaux: string[];
+  active: boolean;
+};
+
+const ALL_NIVEAUX = [...NIVEAUX_PRIMAIRE_CI, ...NIVEAUX_SECONDAIRE_CI];
 
 export default function SettingsPage() {
   const [schoolInfo, setSchoolInfo] = useState({
@@ -40,15 +59,79 @@ export default function SettingsPage() {
     { id: 3, nom: "Trimestre 3", dateDebut: "2025-04-14", dateFin: "2025-06-30" },
   ]);
 
-  const [matieres, setMatieres] = useState([
-    { id: 1, nom: "Français", coefficient: 3, couleur: "#00aef0" },
-    { id: 2, nom: "Mathématiques", coefficient: 3, couleur: "#10a7aa" },
-    { id: 3, nom: "Histoire-Géo", coefficient: 2, couleur: "#f59e0b" },
-    { id: 4, nom: "Sciences", coefficient: 2, couleur: "#10b981" },
-    { id: 5, nom: "Anglais", coefficient: 2, couleur: "#8b5cf6" },
-    { id: 6, nom: "EPS", coefficient: 1, couleur: "#ef4444" },
-    { id: 7, nom: "Arts plastiques", coefficient: 1, couleur: "#ec4899" },
-    { id: 8, nom: "Musique", coefficient: 1, couleur: "#6366f1" },
+  const [matieres, setMatieres] = useState<MatiereItem[]>([
+    {
+      id: 1,
+      nom: "Français",
+      coefficient: 3,
+      couleur: "#00aef0",
+      cycle: "Les_deux",
+      niveaux: ALL_NIVEAUX,
+      active: true,
+    },
+    {
+      id: 2,
+      nom: "Mathématiques",
+      coefficient: 3,
+      couleur: "#10a7aa",
+      cycle: "Les_deux",
+      niveaux: ALL_NIVEAUX,
+      active: true,
+    },
+    {
+      id: 3,
+      nom: "Histoire-Géo",
+      coefficient: 2,
+      couleur: "#f59e0b",
+      cycle: "Secondaire",
+      niveaux: [...NIVEAUX_SECONDAIRE_CI],
+      active: true,
+    },
+    {
+      id: 4,
+      nom: "Sciences",
+      coefficient: 2,
+      couleur: "#10b981",
+      cycle: "Les_deux",
+      niveaux: ALL_NIVEAUX,
+      active: true,
+    },
+    {
+      id: 5,
+      nom: "Anglais",
+      coefficient: 2,
+      couleur: "#8b5cf6",
+      cycle: "Secondaire",
+      niveaux: [...NIVEAUX_SECONDAIRE_CI],
+      active: true,
+    },
+    {
+      id: 6,
+      nom: "EPS",
+      coefficient: 1,
+      couleur: "#ef4444",
+      cycle: "Les_deux",
+      niveaux: ALL_NIVEAUX,
+      active: true,
+    },
+    {
+      id: 7,
+      nom: "Arts plastiques",
+      coefficient: 1,
+      couleur: "#ec4899",
+      cycle: "Primaire",
+      niveaux: [...NIVEAUX_PRIMAIRE_CI],
+      active: true,
+    },
+    {
+      id: 8,
+      nom: "Musique",
+      coefficient: 1,
+      couleur: "#6366f1",
+      cycle: "Primaire",
+      niveaux: [...NIVEAUX_PRIMAIRE_CI],
+      active: true,
+    },
   ]);
 
   const [fraisScolaires, setFraisScolaires] = useState<FraisScolaireItem[]>(getDefaultFrais());
@@ -68,6 +151,9 @@ export default function SettingsPage() {
 
   const [isAddMatiereOpen, setIsAddMatiereOpen] = useState(false);
   const [editingMatiere, setEditingMatiere] = useState<any>(null);
+  const [matiereCycleFilter, setMatiereCycleFilter] = useState<"all" | CycleMatiere>("all");
+  const [matiereNiveauFilter, setMatiereNiveauFilter] = useState("all");
+  const [matiereSearch, setMatiereSearch] = useState("");
   const [isAddTrimestreOpen, setIsAddTrimestreOpen] = useState(false);
   const [editingTrimestre, setEditingTrimestre] = useState<any>(null);
 
@@ -75,23 +161,47 @@ export default function SettingsPage() {
     alert("Informations de l'école enregistrées avec succès !");
   };
 
-  const handleAddMatiere = (newMatiere: any) => {
-    const matiere = {
-      id: matieres.length + 1,
-      ...newMatiere,
-    };
-    setMatieres([...matieres, matiere]);
+  const handleAddMatiere = (newMatiere: Omit<MatiereItem, "id">) => {
+    const nom = newMatiere.nom.trim();
+    if (!nom || newMatiere.niveaux.length === 0) {
+      alert("Veuillez renseigner la matière et au moins un niveau.");
+      return;
+    }
+
+    const duplicate = matieres.some(
+      (m) => m.nom.toLowerCase() === nom.toLowerCase() && m.cycle === newMatiere.cycle
+    );
+    if (duplicate) {
+      alert("Une matière avec ce nom existe déjà pour ce cycle.");
+      return;
+    }
+
+    const nextId = matieres.reduce((max, m) => Math.max(max, m.id), 0) + 1;
+    setMatieres([...matieres, { ...newMatiere, nom, id: nextId }]);
   };
 
-  const handleEditMatiere = (updatedMatiere: any) => {
-    setMatieres(matieres.map(m => m.id === updatedMatiere.id ? updatedMatiere : m));
+  const handleEditMatiere = (updatedMatiere: MatiereItem) => {
+    const nom = updatedMatiere.nom.trim();
+    if (!nom || updatedMatiere.niveaux.length === 0) {
+      alert("Veuillez renseigner la matière et au moins un niveau.");
+      return;
+    }
+    setMatieres(
+      matieres.map((m) =>
+        m.id === updatedMatiere.id ? { ...updatedMatiere, nom } : m
+      )
+    );
     setEditingMatiere(null);
   };
 
   const handleDeleteMatiere = (id: number) => {
     if (confirm("Êtes-vous sûr de vouloir supprimer cette matière ?")) {
-      setMatieres(matieres.filter(m => m.id !== id));
+      setMatieres(matieres.filter((m) => m.id !== id));
     }
+  };
+
+  const handleToggleMatiereActive = (id: number) => {
+    setMatieres(matieres.map((m) => (m.id === id ? { ...m, active: !m.active } : m)));
   };
 
   const handleAddTrimestre = (newTrimestre: any) => {
@@ -193,9 +303,29 @@ export default function SettingsPage() {
 
   const handleDeleteFrais = (id: number) => {
     if (confirm("Êtes-vous sûr de vouloir supprimer ce niveau de frais ?")) {
-      setFraisScolaires(fraisScolaires.filter(f => f.id !== id));
+      setFraisScolaires(fraisScolaires.filter((f) => f.id !== id));
     }
   };
+
+  const niveauxDisponiblesFiltreMatieres =
+    matiereCycleFilter === "all"
+      ? niveauxPourFiltreCycle("Les_deux")
+      : matiereCycleFilter === "Les_deux"
+        ? niveauxPourFiltreCycle("Les_deux")
+        : niveauxPourFiltreCycle(matiereCycleFilter);
+
+  const matieresFiltrees = matieres
+    .filter((matiere) => {
+      const matchSearch = matiere.nom.toLowerCase().includes(matiereSearch.toLowerCase());
+      const matchCycle =
+        matiereCycleFilter === "all" ||
+        matiere.cycle === matiereCycleFilter ||
+        matiere.cycle === "Les_deux";
+      const matchNiveau =
+        matiereNiveauFilter === "all" || matiere.niveaux.includes(matiereNiveauFilter);
+      return matchSearch && matchCycle && matchNiveau;
+    })
+    .sort((a, b) => a.nom.localeCompare(b.nom, "fr-FR"));
 
   return (
     <div className="space-y-6">
@@ -653,10 +783,15 @@ export default function SettingsPage() {
       {/* Matières */}
       <div className="bg-card border border-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-success" />
-            Matières & Coefficients
-          </h3>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
+              <BookOpen className="w-5 h-5 text-success" />
+              Matières & Coefficients
+            </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Gestion par cycle et niveaux pour les écoles primaire/secondaire mixtes.
+            </p>
+          </div>
           <button
             onClick={() => setIsAddMatiereOpen(true)}
             className="flex items-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20"
@@ -666,35 +801,117 @@ export default function SettingsPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {matieres.map((matiere) => (
-            <div key={matiere.id} className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
-              <div className="flex items-center gap-3 flex-1">
-                <div
-                  className="w-4 h-4 rounded-full"
-                  style={{ backgroundColor: matiere.couleur }}
-                ></div>
-                <div>
-                  <p className="font-semibold text-foreground">{matiere.nom}</p>
-                  <p className="text-sm text-muted-foreground">Coefficient: {matiere.coefficient}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={() => setEditingMatiere(matiere)}
-                  className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
-                >
-                  <Edit className="w-4 h-4" />
-                </button>
-                <button
-                  onClick={() => handleDeleteMatiere(matiere.id)}
-                  className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          ))}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          <input
+            type="search"
+            value={matiereSearch}
+            onChange={(e) => setMatiereSearch(e.target.value)}
+            placeholder="Rechercher une matière..."
+            className="px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+          />
+          <select
+            value={matiereCycleFilter}
+            onChange={(e) => {
+              setMatiereCycleFilter(e.target.value as "all" | CycleMatiere);
+              setMatiereNiveauFilter("all");
+            }}
+            className="px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="all">Tous les cycles</option>
+            <option value="Primaire">Primaire</option>
+            <option value="Secondaire">Secondaire</option>
+            <option value="Les_deux">Les deux</option>
+          </select>
+          <select
+            value={matiereNiveauFilter}
+            onChange={(e) => setMatiereNiveauFilter(e.target.value)}
+            className="px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            <option value="all">Tous les niveaux</option>
+            {niveauxDisponiblesFiltreMatieres.map((niveau) => (
+              <option key={niveau} value={niveau}>
+                {niveau}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border border-border">
+          <table className="w-full">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Matière</th>
+                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Cycle</th>
+                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Niveaux concernés</th>
+                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Coefficient</th>
+                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Statut</th>
+                <th className="text-right px-4 py-3 text-sm font-semibold text-foreground">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {matieresFiltrees.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted-foreground">
+                    Aucune matière ne correspond aux filtres actuels.
+                  </td>
+                </tr>
+              ) : (
+                matieresFiltrees.map((matiere) => (
+                  <tr key={matiere.id} className="border-t border-border">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block h-3.5 w-3.5 rounded-full"
+                          style={{ backgroundColor: matiere.couleur }}
+                        ></span>
+                        <span className="font-medium text-foreground">{matiere.nom}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <span className="inline-flex items-center rounded-md bg-info/10 px-2 py-0.5 text-info">
+                        {matiere.cycle === "Les_deux" ? "Les deux" : matiere.cycle}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {matiere.niveaux.length > 3
+                        ? `${matiere.niveaux.slice(0, 3).join(", ")} +${matiere.niveaux.length - 3}`
+                        : matiere.niveaux.join(", ")}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-foreground">{matiere.coefficient}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleMatiereActive(matiere.id)}
+                        className={`rounded-md px-2 py-1 text-xs font-medium ${
+                          matiere.active
+                            ? "bg-success/10 text-success"
+                            : "bg-danger/10 text-danger"
+                        }`}
+                      >
+                        {matiere.active ? "Actif" : "Inactif"}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => setEditingMatiere(matiere)}
+                          className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteMatiere(matiere.id)}
+                          className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

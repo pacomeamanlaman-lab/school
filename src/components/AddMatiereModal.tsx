@@ -3,6 +3,11 @@
 import { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { BookOpen, Hash } from "lucide-react";
+import {
+  NIVEAUX_PRIMAIRE_CI,
+  NIVEAUX_SECONDAIRE_CI,
+  niveauxPourFiltreCycle,
+} from "@/lib/cycles-scolaires-ci";
 
 interface AddMatiereModalProps {
   isOpen: boolean;
@@ -29,6 +34,9 @@ export default function AddMatiereModal({ isOpen, onClose, onSubmit, matiere }: 
     nom: "",
     coefficient: 1,
     couleur: "#00aef0",
+    cycle: "Primaire",
+    niveaux: [...NIVEAUX_PRIMAIRE_CI] as string[],
+    active: true,
   });
 
   useEffect(() => {
@@ -37,12 +45,18 @@ export default function AddMatiereModal({ isOpen, onClose, onSubmit, matiere }: 
         nom: matiere.nom || "",
         coefficient: matiere.coefficient || 1,
         couleur: matiere.couleur || "#00aef0",
+        cycle: matiere.cycle || "Primaire",
+        niveaux: matiere.niveaux || [...NIVEAUX_PRIMAIRE_CI],
+        active: matiere.active !== false,
       });
     } else {
       setFormData({
         nom: "",
         coefficient: 1,
         couleur: "#00aef0",
+        cycle: "Primaire",
+        niveaux: [...NIVEAUX_PRIMAIRE_CI],
+        active: true,
       });
     }
   }, [matiere, isOpen]);
@@ -57,7 +71,33 @@ export default function AddMatiereModal({ isOpen, onClose, onSubmit, matiere }: 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const value = e.target.name === "coefficient" ? parseInt(e.target.value) : e.target.value;
+    if (e.target.name === "cycle") {
+      const cycle = value as "Primaire" | "Secondaire" | "Les_deux";
+      const niveaux =
+        cycle === "Primaire"
+          ? [...NIVEAUX_PRIMAIRE_CI]
+          : cycle === "Secondaire"
+            ? [...NIVEAUX_SECONDAIRE_CI]
+            : niveauxPourFiltreCycle("Les_deux");
+      setFormData({ ...formData, cycle, niveaux });
+      return;
+    }
     setFormData({ ...formData, [e.target.name]: value });
+  };
+
+  const niveauxDisponibles =
+    formData.cycle === "Primaire"
+      ? [...NIVEAUX_PRIMAIRE_CI]
+      : formData.cycle === "Secondaire"
+        ? [...NIVEAUX_SECONDAIRE_CI]
+        : niveauxPourFiltreCycle("Les_deux");
+
+  const toggleNiveau = (niveau: string) => {
+    const exists = formData.niveaux.includes(niveau);
+    const nextNiveaux = exists
+      ? formData.niveaux.filter((n) => n !== niveau)
+      : [...formData.niveaux, niveau];
+    setFormData({ ...formData, niveaux: nextNiveaux });
   };
 
   return (
@@ -103,6 +143,45 @@ export default function AddMatiereModal({ isOpen, onClose, onSubmit, matiere }: 
 
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">
+            Cycle pédagogique <span className="text-danger">*</span>
+          </label>
+          <select
+            name="cycle"
+            value={formData.cycle}
+            onChange={handleChange}
+            className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+          >
+            <option value="Primaire">Primaire</option>
+            <option value="Secondaire">Secondaire</option>
+            <option value="Les_deux">Les deux</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-2">
+            Niveaux concernés <span className="text-danger">*</span>
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            {niveauxDisponibles.map((niveau) => (
+              <label
+                key={niveau}
+                className="flex items-center gap-2 rounded-lg border border-input px-3 py-2 text-sm"
+              >
+                <input
+                  type="checkbox"
+                  checked={formData.niveaux.includes(niveau)}
+                  onChange={() => toggleNiveau(niveau)}
+                  className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
+                />
+                <span>{niveau}</span>
+              </label>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground mt-1">Sélectionnez au moins un niveau.</p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-foreground mb-2">
             Couleur <span className="text-danger">*</span>
           </label>
           <div className="grid grid-cols-5 gap-2">
@@ -142,6 +221,7 @@ export default function AddMatiereModal({ isOpen, onClose, onSubmit, matiere }: 
           </button>
           <button
             type="submit"
+            disabled={formData.niveaux.length === 0}
             className="px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
           >
             {matiere ? "Modifier" : "Ajouter"}
