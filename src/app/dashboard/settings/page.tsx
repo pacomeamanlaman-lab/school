@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { School, Calendar, BookOpen, Save, Plus, Edit, Trash2, Coins, ListPlus } from "lucide-react";
 import AddMatiereModal from "@/components/AddMatiereModal";
 import AddTrimestreModal from "@/components/AddTrimestreModal";
+import Modal from "@/components/Modal";
+import CoefficientGrilleReferencePanel from "@/components/CoefficientGrilleReferencePanel";
 import type { FiltreCycleFrais } from "@/lib/cycles-scolaires-ci";
 import {
   inferCycleFromNiveau,
@@ -21,6 +24,12 @@ import {
   saveFraisDraftToStorage,
   saveFraisToStorage,
 } from "@/lib/frais-scolaires";
+import type {
+  CoefficientGrilleReferenceRow,
+  NiveauCoeffReference,
+  SerieBacReference,
+} from "@/lib/coefficients-grille-reference";
+import { loadCoeffGrilleFromStorage, saveCoeffGrilleToStorage } from "@/lib/coefficients-grille-reference";
 
 type CycleMatiere = "Primaire" | "Secondaire" | "Les_deux";
 
@@ -42,127 +51,6 @@ type MatiereItem = {
 };
 
 const ALL_NIVEAUX = [...NIVEAUX_PRIMAIRE_CI, ...NIVEAUX_SECONDAIRE_CI];
-
-type NiveauCoefficient =
-  | "CP1"
-  | "CP2"
-  | "CE1"
-  | "CE2"
-  | "CM1"
-  | "CM2"
-  | "6ème"
-  | "5ème"
-  | "4ème"
-  | "3ème"
-  | "2nde"
-  | "1ère"
-  | "Terminale";
-
-type SerieBac = "A1" | "A2" | "B" | "C" | "D" | "none";
-
-type CoefficientRow = {
-  id: number;
-  cycle: "Primaire" | "Secondaire";
-  niveau: NiveauCoefficient;
-  serie: SerieBac;
-  matiere: string;
-  coefficient: number;
-};
-
-const COEFFICIENTS_OFFICIELS_MVP: CoefficientRow[] = [
-  // Primaire (pondération simplifiée MVP)
-  { id: 1, cycle: "Primaire", niveau: "CP1", serie: "none", matiere: "Français", coefficient: 2 },
-  { id: 2, cycle: "Primaire", niveau: "CP1", serie: "none", matiere: "Mathématiques", coefficient: 2 },
-  { id: 3, cycle: "Primaire", niveau: "CP1", serie: "none", matiere: "Sciences & Technologie", coefficient: 1 },
-  { id: 4, cycle: "Primaire", niveau: "CP1", serie: "none", matiere: "EDHC", coefficient: 1 },
-  { id: 5, cycle: "Primaire", niveau: "CP1", serie: "none", matiere: "EPS", coefficient: 1 },
-  { id: 6, cycle: "Primaire", niveau: "CP1", serie: "none", matiere: "Arts plastiques / Musique", coefficient: 1 },
-
-  { id: 7, cycle: "Primaire", niveau: "CM2", serie: "none", matiere: "Français", coefficient: 2 },
-  { id: 8, cycle: "Primaire", niveau: "CM2", serie: "none", matiere: "Mathématiques", coefficient: 2 },
-  { id: 9, cycle: "Primaire", niveau: "CM2", serie: "none", matiere: "Sciences & Technologie", coefficient: 1 },
-  { id: 10, cycle: "Primaire", niveau: "CM2", serie: "none", matiere: "EDHC", coefficient: 1 },
-  { id: 11, cycle: "Primaire", niveau: "CM2", serie: "none", matiere: "EPS", coefficient: 1 },
-  { id: 12, cycle: "Primaire", niveau: "CM2", serie: "none", matiere: "Arts plastiques / Musique", coefficient: 1 },
-
-  // Secondaire 1er cycle
-  { id: 20, cycle: "Secondaire", niveau: "6ème", serie: "none", matiere: "Français", coefficient: 3 },
-  { id: 21, cycle: "Secondaire", niveau: "5ème", serie: "none", matiere: "Français", coefficient: 3 },
-  { id: 22, cycle: "Secondaire", niveau: "4ème", serie: "none", matiere: "Français", coefficient: 3 },
-  { id: 23, cycle: "Secondaire", niveau: "3ème", serie: "none", matiere: "Français", coefficient: 4 },
-
-  { id: 24, cycle: "Secondaire", niveau: "6ème", serie: "none", matiere: "Mathématiques", coefficient: 3 },
-  { id: 25, cycle: "Secondaire", niveau: "5ème", serie: "none", matiere: "Mathématiques", coefficient: 3 },
-  { id: 26, cycle: "Secondaire", niveau: "4ème", serie: "none", matiere: "Mathématiques", coefficient: 3 },
-  { id: 27, cycle: "Secondaire", niveau: "3ème", serie: "none", matiere: "Mathématiques", coefficient: 3 },
-
-  { id: 28, cycle: "Secondaire", niveau: "6ème", serie: "none", matiere: "Histoire-Géographie", coefficient: 2 },
-  { id: 29, cycle: "Secondaire", niveau: "5ème", serie: "none", matiere: "Histoire-Géographie", coefficient: 2 },
-  { id: 30, cycle: "Secondaire", niveau: "4ème", serie: "none", matiere: "Histoire-Géographie", coefficient: 2 },
-  { id: 31, cycle: "Secondaire", niveau: "3ème", serie: "none", matiere: "Histoire-Géographie", coefficient: 2 },
-
-  { id: 32, cycle: "Secondaire", niveau: "6ème", serie: "none", matiere: "SVT", coefficient: 2 },
-  { id: 33, cycle: "Secondaire", niveau: "5ème", serie: "none", matiere: "SVT", coefficient: 2 },
-  { id: 34, cycle: "Secondaire", niveau: "4ème", serie: "none", matiere: "SVT", coefficient: 2 },
-  { id: 35, cycle: "Secondaire", niveau: "3ème", serie: "none", matiere: "SVT", coefficient: 2 },
-
-  { id: 36, cycle: "Secondaire", niveau: "6ème", serie: "none", matiere: "Physique-Chimie", coefficient: 2 },
-  { id: 37, cycle: "Secondaire", niveau: "5ème", serie: "none", matiere: "Physique-Chimie", coefficient: 2 },
-  { id: 38, cycle: "Secondaire", niveau: "4ème", serie: "none", matiere: "Physique-Chimie", coefficient: 2 },
-  { id: 39, cycle: "Secondaire", niveau: "3ème", serie: "none", matiere: "Physique-Chimie", coefficient: 2 },
-
-  { id: 40, cycle: "Secondaire", niveau: "6ème", serie: "none", matiere: "Anglais (LV1)", coefficient: 2 },
-  { id: 41, cycle: "Secondaire", niveau: "5ème", serie: "none", matiere: "Anglais (LV1)", coefficient: 2 },
-  { id: 42, cycle: "Secondaire", niveau: "4ème", serie: "none", matiere: "Anglais (LV1)", coefficient: 2 },
-  { id: 43, cycle: "Secondaire", niveau: "3ème", serie: "none", matiere: "Anglais (LV1)", coefficient: 2 },
-
-  { id: 44, cycle: "Secondaire", niveau: "4ème", serie: "none", matiere: "Allemand/Espagnol (LV2)", coefficient: 1 },
-  { id: 45, cycle: "Secondaire", niveau: "3ème", serie: "none", matiere: "Allemand/Espagnol (LV2)", coefficient: 1 },
-
-  // Seconde A/C (commune)
-  { id: 50, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "Français", coefficient: 4 },
-  { id: 51, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "Mathématiques", coefficient: 3 },
-  { id: 52, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "Histoire-Géographie", coefficient: 2 },
-  { id: 53, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "SVT", coefficient: 2 },
-  { id: 54, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "Physique-Chimie", coefficient: 2 },
-  { id: 55, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "Anglais (LV1)", coefficient: 2 },
-  { id: 56, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "LV2", coefficient: 1 },
-  { id: 57, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "Philosophie", coefficient: 1 },
-  { id: 58, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "EDHC", coefficient: 1 },
-  { id: 59, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "EPS", coefficient: 1 },
-  { id: 60, cycle: "Secondaire", niveau: "2nde", serie: "none", matiere: "Arts plastiques / Musique", coefficient: 1 },
-
-  // Terminale par série (extraits principaux)
-  { id: 70, cycle: "Secondaire", niveau: "Terminale", serie: "A1", matiere: "Français / Littérature", coefficient: 5 },
-  { id: 71, cycle: "Secondaire", niveau: "Terminale", serie: "A1", matiere: "Philosophie", coefficient: 4 },
-  { id: 72, cycle: "Secondaire", niveau: "Terminale", serie: "A1", matiere: "Mathématiques", coefficient: 1 },
-  { id: 73, cycle: "Secondaire", niveau: "Terminale", serie: "A1", matiere: "Histoire-Géographie", coefficient: 3 },
-  { id: 74, cycle: "Secondaire", niveau: "Terminale", serie: "A1", matiere: "Anglais (LV1)", coefficient: 3 },
-
-  { id: 80, cycle: "Secondaire", niveau: "Terminale", serie: "A2", matiere: "Français / Littérature", coefficient: 4 },
-  { id: 81, cycle: "Secondaire", niveau: "Terminale", serie: "A2", matiere: "Philosophie", coefficient: 3 },
-  { id: 82, cycle: "Secondaire", niveau: "Terminale", serie: "A2", matiere: "Mathématiques", coefficient: 3 },
-  { id: 83, cycle: "Secondaire", niveau: "Terminale", serie: "A2", matiere: "Histoire-Géographie", coefficient: 3 },
-  { id: 84, cycle: "Secondaire", niveau: "Terminale", serie: "A2", matiere: "Anglais (LV1)", coefficient: 3 },
-
-  { id: 90, cycle: "Secondaire", niveau: "Terminale", serie: "B", matiere: "Économie", coefficient: 5 },
-  { id: 91, cycle: "Secondaire", niveau: "Terminale", serie: "B", matiere: "Mathématiques", coefficient: 3 },
-  { id: 92, cycle: "Secondaire", niveau: "Terminale", serie: "B", matiere: "Français / Littérature", coefficient: 3 },
-  { id: 93, cycle: "Secondaire", niveau: "Terminale", serie: "B", matiere: "Philosophie", coefficient: 3 },
-  { id: 94, cycle: "Secondaire", niveau: "Terminale", serie: "B", matiere: "Histoire-Géographie", coefficient: 3 },
-
-  { id: 100, cycle: "Secondaire", niveau: "Terminale", serie: "C", matiere: "Mathématiques", coefficient: 7 },
-  { id: 101, cycle: "Secondaire", niveau: "Terminale", serie: "C", matiere: "Physique-Chimie", coefficient: 5 },
-  { id: 102, cycle: "Secondaire", niveau: "Terminale", serie: "C", matiere: "SVT", coefficient: 2 },
-  { id: 103, cycle: "Secondaire", niveau: "Terminale", serie: "C", matiere: "Français / Littérature", coefficient: 2 },
-  { id: 104, cycle: "Secondaire", niveau: "Terminale", serie: "C", matiere: "Philosophie", coefficient: 2 },
-
-  { id: 110, cycle: "Secondaire", niveau: "Terminale", serie: "D", matiere: "SVT", coefficient: 5 },
-  { id: 111, cycle: "Secondaire", niveau: "Terminale", serie: "D", matiere: "Mathématiques", coefficient: 4 },
-  { id: 112, cycle: "Secondaire", niveau: "Terminale", serie: "D", matiere: "Physique-Chimie", coefficient: 3 },
-  { id: 113, cycle: "Secondaire", niveau: "Terminale", serie: "D", matiere: "Français / Littérature", coefficient: 2 },
-  { id: 114, cycle: "Secondaire", niveau: "Terminale", serie: "D", matiere: "Histoire-Géographie", coefficient: 2 },
-];
 
 export default function SettingsPage() {
   const [schoolInfo, setSchoolInfo] = useState({
@@ -282,13 +170,33 @@ export default function SettingsPage() {
   const [matiereCycleFilter, setMatiereCycleFilter] = useState<"all" | CycleMatiere>("all");
   const [matiereNiveauFilter, setMatiereNiveauFilter] = useState("all");
   const [matiereSearch, setMatiereSearch] = useState("");
-  const [coeffRows, setCoeffRows] = useState<CoefficientRow[]>(COEFFICIENTS_OFFICIELS_MVP);
+  const [isCoeffGrilleModalOpen, setIsCoeffGrilleModalOpen] = useState(false);
+  const [coeffGrilleRows, setCoeffGrilleRows] = useState<CoefficientGrilleReferenceRow[]>([]);
   const [coeffCycleFilter, setCoeffCycleFilter] = useState<"all" | "Primaire" | "Secondaire">("all");
-  const [coeffNiveauFilter, setCoeffNiveauFilter] = useState<"all" | NiveauCoefficient>("all");
-  const [coeffSerieFilter, setCoeffSerieFilter] = useState<"all" | SerieBac>("all");
+  const [coeffNiveauFilter, setCoeffNiveauFilter] = useState<"all" | NiveauCoeffReference>("all");
+  const [coeffSerieFilter, setCoeffSerieFilter] = useState<"all" | SerieBacReference>("all");
   const [coeffSearch, setCoeffSearch] = useState("");
   const [isAddTrimestreOpen, setIsAddTrimestreOpen] = useState(false);
   const [editingTrimestre, setEditingTrimestre] = useState<any>(null);
+
+  useEffect(() => {
+    if (!isCoeffGrilleModalOpen) return;
+    setCoeffGrilleRows(loadCoeffGrilleFromStorage());
+    setCoeffCycleFilter("all");
+    setCoeffNiveauFilter("all");
+    setCoeffSerieFilter("all");
+    setCoeffSearch("");
+  }, [isCoeffGrilleModalOpen]);
+
+  const handleUpdateCoeffGrilleRow = (id: number, next: number) => {
+    setCoeffGrilleRows((rows) => {
+      const updated = rows.map((r) =>
+        r.id === id ? { ...r, coefficient: Math.max(1, Math.min(9, next || 1)) } : r
+      );
+      saveCoeffGrilleToStorage(updated);
+      return updated;
+    });
+  };
 
   const handleSaveSchoolInfo = () => {
     alert("Informations de l'école enregistrées avec succès !");
@@ -504,24 +412,6 @@ export default function SettingsPage() {
       return "Par niveau";
     }
     return String(matiere.coefficient);
-  };
-
-  const filteredCoeffRows = coeffRows
-    .filter((row) => {
-      const matchCycle = coeffCycleFilter === "all" || row.cycle === coeffCycleFilter;
-      const matchNiveau = coeffNiveauFilter === "all" || row.niveau === coeffNiveauFilter;
-      const matchSerie = coeffSerieFilter === "all" || row.serie === coeffSerieFilter;
-      const matchSearch =
-        row.matiere.toLowerCase().includes(coeffSearch.toLowerCase()) ||
-        row.niveau.toLowerCase().includes(coeffSearch.toLowerCase());
-      return matchCycle && matchNiveau && matchSerie && matchSearch;
-    })
-    .sort((a, b) => a.matiere.localeCompare(b.matiere, "fr-FR"));
-
-  const handleUpdateCoeffRow = (id: number, next: number) => {
-    setCoeffRows((rows) =>
-      rows.map((r) => (r.id === id ? { ...r, coefficient: Math.max(1, Math.min(9, next || 1)) } : r))
-    );
   };
 
   return (
@@ -989,13 +879,22 @@ export default function SettingsPage() {
               Gestion par cycle et niveaux pour les écoles primaire/secondaire mixtes.
             </p>
           </div>
-          <button
-            onClick={() => setIsAddMatiereOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20"
-          >
-            <Plus className="w-4 h-4" />
-            Ajouter
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsCoeffGrilleModalOpen(true)}
+              className="text-sm text-primary hover:underline"
+            >
+              Grille officielle
+            </button>
+            <button
+              onClick={() => setIsAddMatiereOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
@@ -1136,121 +1035,41 @@ export default function SettingsPage() {
         </div>
       </div>
 
-      {/* Grille coefficients par classe/série */}
-      <div className="bg-card border border-border rounded-xl p-6">
-        <div className="mb-4">
-          <h3 className="text-lg font-semibold text-foreground">Grille des coefficients par classe / série</h3>
-          <p className="text-sm text-muted-foreground mt-1">
-            Référence CI (MENA/DPFC) modifiable par l&apos;administration.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
-          <input
-            type="search"
-            value={coeffSearch}
-            onChange={(e) => setCoeffSearch(e.target.value)}
-            placeholder="Rechercher matière ou niveau..."
-            className="px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          />
-          <select
-            value={coeffCycleFilter}
-            onChange={(e) => {
-              setCoeffCycleFilter(e.target.value as "all" | "Primaire" | "Secondaire");
-              setCoeffNiveauFilter("all");
-              setCoeffSerieFilter("all");
-            }}
-            className="px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">Tous les cycles</option>
-            <option value="Primaire">Primaire</option>
-            <option value="Secondaire">Secondaire</option>
-          </select>
-          <select
-            value={coeffNiveauFilter}
-            onChange={(e) => setCoeffNiveauFilter(e.target.value as "all" | NiveauCoefficient)}
-            className="px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">Tous les niveaux</option>
-            {[
-              "CP1",
-              "CP2",
-              "CE1",
-              "CE2",
-              "CM1",
-              "CM2",
-              "6ème",
-              "5ème",
-              "4ème",
-              "3ème",
-              "2nde",
-              "1ère",
-              "Terminale",
-            ].map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </select>
-          <select
-            value={coeffSerieFilter}
-            onChange={(e) => setCoeffSerieFilter(e.target.value as "all" | SerieBac)}
-            className="px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">Toutes séries</option>
-            <option value="none">Sans série</option>
-            <option value="A1">A1</option>
-            <option value="A2">A2</option>
-            <option value="B">B</option>
-            <option value="C">C</option>
-            <option value="D">D</option>
-          </select>
-        </div>
-
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full">
-            <thead className="bg-muted/40">
-              <tr>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Cycle</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Niveau</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Série</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Matière</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Coefficient</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredCoeffRows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted-foreground">
-                    Aucun coefficient ne correspond aux filtres.
-                  </td>
-                </tr>
-              ) : (
-                filteredCoeffRows.map((row) => (
-                  <tr key={row.id} className="border-t border-border">
-                    <td className="px-4 py-3 text-sm">{row.cycle}</td>
-                    <td className="px-4 py-3 text-sm">{row.niveau}</td>
-                    <td className="px-4 py-3 text-sm">{row.serie === "none" ? "—" : row.serie}</td>
-                    <td className="px-4 py-3 text-sm font-medium text-foreground">{row.matiere}</td>
-                    <td className="px-4 py-3">
-                      <input
-                        type="number"
-                        min="1"
-                        max="9"
-                        value={row.coefficient}
-                        onChange={(e) => handleUpdateCoeffRow(row.id, parseInt(e.target.value, 10) || 1)}
-                        className="w-20 px-2.5 py-1.5 bg-white border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
       {/* Modals */}
+      <Modal
+        isOpen={isCoeffGrilleModalOpen}
+        onClose={() => setIsCoeffGrilleModalOpen(false)}
+        title="Grille des coefficients (référence)"
+        size="xl"
+      >
+        <div className="space-y-4">
+          <CoefficientGrilleReferencePanel
+            rows={coeffGrilleRows}
+            onUpdateRow={handleUpdateCoeffGrilleRow}
+            search={coeffSearch}
+            onSearchChange={setCoeffSearch}
+            cycleFilter={coeffCycleFilter}
+            onCycleFilterChange={setCoeffCycleFilter}
+            niveauFilter={coeffNiveauFilter}
+            onNiveauFilterChange={setCoeffNiveauFilter}
+            serieFilter={coeffSerieFilter}
+            onSerieFilterChange={setCoeffSerieFilter}
+          />
+          <div className="flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              Les modifications sont enregistrées localement (MVP), identiques sur la page dédiée.
+            </p>
+            <Link
+              href="/dashboard/settings/coefficients-reference"
+              onClick={() => setIsCoeffGrilleModalOpen(false)}
+              className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition"
+            >
+              Ouvrir en plein écran
+            </Link>
+          </div>
+        </div>
+      </Modal>
+
       <AddMatiereModal
         isOpen={isAddMatiereOpen}
         onClose={() => setIsAddMatiereOpen(false)}

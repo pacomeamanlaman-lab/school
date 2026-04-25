@@ -19,13 +19,13 @@ type MatiereFormData = {
   nom: string;
   nomOption: string;
   coefficient: number; // utilisé en mode simple
-  coefficientMode: "unique" | "par_cycle" | "par_niveau";
+  coefficientMode: "" | "unique" | "par_cycle" | "par_niveau";
   coefficientPrimaire: number;
   coefficientSecondaire: number;
   coefficientsParNiveau: CoeffParNiveau;
   coefficientsParSerie: CoeffParSerie;
   couleur: string;
-  cycle: CycleMatiere;
+  cycle: "" | CycleMatiere;
   niveaux: string[];
   seriesTerminale: SerieBac[];
   active: boolean;
@@ -158,13 +158,13 @@ const emptyForm = (): MatiereFormData => ({
   nom: "",
   nomOption: "",
   coefficient: 1,
-  coefficientMode: "unique",
+  coefficientMode: "",
   coefficientPrimaire: 1,
   coefficientSecondaire: 1,
   coefficientsParNiveau: {},
   coefficientsParSerie: { ...DEFAULT_SERIE_COEFFS },
   couleur: "#00aef0",
-  cycle: "Primaire",
+  cycle: "",
   niveaux: [],
   seriesTerminale: ["A1", "A2", "B", "C", "D"],
   active: true,
@@ -194,8 +194,7 @@ function loadDraftQueue(): MatiereDraftLine[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((r) => {
+    return parsed.flatMap((r) => {
         const row = r as Record<string, unknown>;
         const nom = String(row.nom ?? "").trim();
         const coefficient = Number(row.coefficient) || 1;
@@ -204,7 +203,9 @@ function loadDraftQueue(): MatiereDraftLine[] {
             ? "par_cycle"
             : row.coefficientMode === "par_niveau"
               ? "par_niveau"
-              : "unique";
+              : row.coefficientMode === "unique"
+                ? "unique"
+                : "";
         const coefficientPrimaire = Number(row.coefficientPrimaire) || coefficient;
         const coefficientSecondaire = Number(row.coefficientSecondaire) || coefficient;
         const coefficientsParSerieRaw = (row.coefficientsParSerie ?? {}) as Record<string, unknown>;
@@ -216,7 +217,11 @@ function loadDraftQueue(): MatiereDraftLine[] {
           D: Number(coefficientsParSerieRaw.D) || coefficient,
         };
         const couleur = String(row.couleur ?? "#00aef0");
-        const cycle = row.cycle as CycleMatiere;
+        const cycleRaw = String(row.cycle ?? "");
+        const cycle: "" | CycleMatiere =
+          cycleRaw === "Primaire" || cycleRaw === "Secondaire" || cycleRaw === "Les_deux"
+            ? (cycleRaw as CycleMatiere)
+            : "";
         const niveaux = Array.isArray(row.niveaux)
           ? row.niveaux.map(String).filter(Boolean)
           : [];
@@ -233,8 +238,8 @@ function loadDraftQueue(): MatiereDraftLine[] {
           return acc;
         }, {} as CoeffParNiveau);
         const active = row.active !== false;
-        if (!nom || niveaux.length === 0) return null;
-        return {
+        if (!nom || !cycle || niveaux.length === 0) return [];
+        const line: MatiereDraftLine = {
           draftId: typeof row.draftId === "string" ? row.draftId : newDraftId(),
           nom,
           nomOption: nom,
@@ -245,13 +250,13 @@ function loadDraftQueue(): MatiereDraftLine[] {
           coefficientsParNiveau,
           coefficientsParSerie,
           couleur,
-          cycle: cycle || "Primaire",
+          cycle,
           niveaux,
           seriesTerminale,
           active,
-        } satisfies MatiereDraftLine;
-      })
-      .filter((x): x is MatiereDraftLine => x !== null);
+        };
+        return [line];
+    });
   } catch {
     return [];
   }
@@ -306,8 +311,10 @@ export default function AddMatiereModal({
       ? [...NIVEAUX_PRIMAIRE_CI]
       : formData.cycle === "Secondaire"
         ? [...NIVEAUX_SECONDAIRE_CI]
-        : niveauxPourFiltreCycle("Les_deux");
-  const matieresPredefinies = MATIERES_PREDEFINIES[formData.cycle];
+        : formData.cycle === "Les_deux"
+          ? niveauxPourFiltreCycle("Les_deux")
+          : [];
+  const matieresPredefinies = formData.cycle ? MATIERES_PREDEFINIES[formData.cycle] : [];
 
   const getPredefCoeffs = (entry?: MatierePredef) => ({
     coefficient: entry?.coefficient ?? formData.coefficient,
@@ -331,7 +338,20 @@ export default function AddMatiereModal({
         : parseInt(rawValue, 10)
       : rawValue;
     if (e.target.name === "cycle") {
-      const cycle = value as CycleMatiere;
+      const cycle = value as "" | CycleMatiere;
+      if (!cycle) {
+        setFormData({
+          ...formData,
+          cycle: "",
+          niveaux: [],
+          nomOption: "",
+          nom: "",
+          coefficientMode: "",
+          coefficientsParNiveau: {},
+          seriesTerminale: ["A1", "A2", "B", "C", "D"],
+        });
+        return;
+      }
       const defaultMatiere = MATIERES_PREDEFINIES[cycle][0];
       const defaults = getPredefCoeffs(defaultMatiere);
       setFormData({
@@ -341,7 +361,7 @@ export default function AddMatiereModal({
         nomOption: defaultMatiere?.nom || "",
         nom: defaultMatiere?.nom || "",
         coefficient: defaults.coefficient,
-        coefficientMode: "unique",
+        coefficientMode: "",
         coefficientPrimaire: defaults.coefficientPrimaire,
         coefficientSecondaire: defaults.coefficientSecondaire,
         coefficientsParNiveau: {},
@@ -351,7 +371,7 @@ export default function AddMatiereModal({
       return;
     }
     if (e.target.name === "coefficientMode") {
-      const nextMode = value as "unique" | "par_cycle" | "par_niveau";
+      const nextMode = value as "" | "unique" | "par_cycle" | "par_niveau";
       setFormData({
         ...formData,
         coefficientMode: nextMode,
@@ -429,9 +449,11 @@ export default function AddMatiereModal({
       ? formData.niveaux.filter((n) => n !== niveau)
       : [...formData.niveaux, niveau];
     const nextMode =
-      formData.coefficientMode === "par_niveau" && nextNiveaux.length < 2
-        ? "unique"
-        : formData.coefficientMode;
+      nextNiveaux.length === 0
+        ? ""
+        : formData.coefficientMode === "par_niveau" && nextNiveaux.length < 2
+          ? "unique"
+          : formData.coefficientMode;
     setFormData({
       ...formData,
       niveaux: nextNiveaux,
@@ -460,7 +482,7 @@ export default function AddMatiereModal({
     setFormData({
       ...formData,
       niveaux: [],
-      coefficientMode: formData.coefficientMode === "par_niveau" ? "unique" : formData.coefficientMode,
+      coefficientMode: "",
       coefficientsParNiveau: {},
       seriesTerminale: [],
     });
@@ -472,7 +494,7 @@ export default function AddMatiereModal({
       coefficientMode: enabled
         ? "par_cycle"
         : prev.coefficientMode === "par_cycle"
-          ? "unique"
+          ? ""
           : prev.coefficientMode,
       coefficientPrimaire: enabled ? prev.coefficientPrimaire : prev.coefficient,
       coefficientSecondaire: enabled ? prev.coefficientSecondaire : prev.coefficient,
@@ -483,7 +505,15 @@ export default function AddMatiereModal({
     const isValidCoef = (value: number, min: number, max: number) =>
       Number.isFinite(value) && value >= min && value <= max;
 
+    if (!formData.cycle) return "Le cycle pédagogique est requis.";
     if (!formData.nom.trim()) return "Le nom de la matière est requis.";
+    if (
+      (formData.cycle === "Secondaire" || formData.cycle === "Les_deux") &&
+      formData.niveaux.length > 0 &&
+      !formData.coefficientMode
+    ) {
+      return "Choisissez un mode coefficient.";
+    }
     if (formData.coefficientMode === "unique" && !isValidCoef(formData.coefficient, 1, 9)) {
       return "Le coefficient doit être entre 1 et 9.";
     }
@@ -527,28 +557,30 @@ export default function AddMatiereModal({
     );
 
   const buildMatierePayload = (data: MatiereFormData) => {
+    const effectiveCycle = (data.cycle || "Primaire") as CycleMatiere;
+    const effectiveMode: "unique" | "par_cycle" | "par_niveau" = data.coefficientMode || "unique";
     const hasTerminale = data.niveaux.includes("Terminale");
     const selectedSeries = hasTerminale ? data.seriesTerminale : [];
     const firstSeries = selectedSeries[0];
     const coeffFromSeries = firstSeries ? data.coefficientsParSerie[firstSeries] : data.coefficient;
     const base = {
       nom: data.nom.trim(),
-      coefficientMode: data.coefficientMode,
+      coefficientMode: effectiveMode,
       coefficient:
         hasTerminale && selectedSeries.length > 0
           ? coeffFromSeries
-          : data.coefficientMode === "par_niveau" && data.niveaux.length > 0
+          : effectiveMode === "par_niveau" && data.niveaux.length > 0
             ? data.coefficientsParNiveau[data.niveaux[0] as NiveauCoefficient] ?? data.coefficient
-          : data.cycle === "Les_deux" && data.coefficientMode === "par_cycle"
+          : data.cycle === "Les_deux" && effectiveMode === "par_cycle"
           ? data.coefficientPrimaire
           : data.coefficient,
       couleur: data.couleur,
-      cycle: data.cycle,
+      cycle: effectiveCycle,
       niveaux: data.niveaux,
       seriesTerminale: data.seriesTerminale,
       active: data.active,
     };
-    if (data.cycle === "Les_deux" && data.coefficientMode === "par_cycle") {
+    if (effectiveCycle === "Les_deux" && effectiveMode === "par_cycle") {
       return {
         ...base,
         coefficientsParCycle: {
@@ -568,7 +600,7 @@ export default function AddMatiereModal({
             }, {} as Partial<CoeffParSerie>)
           : undefined,
       coefficientsParNiveau:
-        data.coefficientMode === "par_niveau"
+        effectiveMode === "par_niveau"
           ? data.niveaux.reduce((acc, niveau) => {
               const key = niveau as NiveauCoefficient;
               acc[key] = data.coefficientsParNiveau[key] ?? data.coefficient;
@@ -595,6 +627,10 @@ export default function AddMatiereModal({
     const error = validateForm();
     if (error) {
       alert(error);
+      return;
+    }
+    if (!formData.cycle) {
+      alert("Sélectionnez un cycle pédagogique.");
       return;
     }
     const nom = formData.nom.trim();
@@ -796,7 +832,9 @@ function MatiereFormFields({
   onColorSelect: (couleur: string) => void;
   matieresPredefinies: MatierePredef[];
 }) {
+  const hasCycleSelected = formData.cycle !== "";
   const isPrimaryCycle = formData.cycle === "Primaire";
+  const hasNiveauxSelectionnes = formData.niveaux.length > 0;
   const displayNumber = (value: number): number | "" => (Number.isNaN(value) ? "" : value);
 
   return (
@@ -812,6 +850,7 @@ function MatiereFormFields({
             onChange={onChange}
             className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
           >
+            <option value="">Choisir un cycle...</option>
             <option value="Primaire">Primaire</option>
             <option value="Secondaire">Secondaire</option>
             <option value="Les_deux">Les deux</option>
@@ -829,6 +868,7 @@ function MatiereFormFields({
               value={formData.nomOption || ""}
               onChange={onChange}
               required
+              disabled={!hasCycleSelected}
               className="w-full appearance-none pl-10 pr-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
             >
               <option value="">Choisir une matière...</option>
@@ -840,6 +880,11 @@ function MatiereFormFields({
               <option value="__custom__">Autre (personnalisée)</option>
             </select>
           </div>
+          {!hasCycleSelected && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Choisissez d'abord le cycle pédagogique pour afficher les matières.
+            </p>
+          )}
           {formData.nomOption === "__custom__" && (
             <input
               type="text"
@@ -852,51 +897,66 @@ function MatiereFormFields({
             />
           )}
         </div>
+      </div>
 
-        {!isPrimaryCycle && (formData.coefficientMode === "unique" || formData.coefficientMode === "par_niveau" ? (
-          <div>
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Coefficient <span className="text-danger">*</span>
-            </label>
-            <div className="relative">
-              <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+      {hasCycleSelected && (
+      <div className="mt-4">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <label className="block text-sm font-medium text-foreground">
+            Niveaux concernés <span className="text-danger">*</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onSelectAllNiveaux}
+              className="rounded-md border border-input px-2.5 py-1 text-xs text-foreground hover:bg-accent transition"
+            >
+              Tout sélectionner
+            </button>
+            <button
+              type="button"
+              onClick={onClearAllNiveaux}
+              className="rounded-md border border-input px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent transition"
+            >
+              Tout désélectionner
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {niveauxDisponibles.map((niveau) => (
+            <label
+              key={niveau}
+              className="flex items-center gap-2 rounded-lg border border-input px-3 py-2 text-sm"
+            >
               <input
-                type="number"
-                name="coefficient"
-                value={displayNumber(formData.coefficient)}
-                onChange={onChange}
-                required
-                disabled={formData.coefficientMode === "par_niveau"}
-                min="1"
-                max="9"
-                className={`w-full pl-10 pr-4 py-2.5 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition ${
-                  formData.coefficientMode === "par_niveau"
-                    ? "bg-muted/50 text-muted-foreground cursor-not-allowed"
-                    : "bg-white"
-                }`}
+                type="checkbox"
+                checked={formData.niveaux.includes(niveau)}
+                onChange={() => onToggleNiveau(niveau)}
+                className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
               />
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {formData.coefficientMode === "par_niveau"
-                ? "Gelé: la saisie se fait dans les champs par niveau ci-dessous."
-                : "Utilisé uniquement en mode coefficient unique."}
-            </p>
-          </div>
-        ) : (
-          <div className="rounded-lg border border-dashed border-border bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground">
-            Le coefficient est défini plus bas selon le mode choisi.
-          </div>
-        ))}
+              <span>{niveau}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+      )}
 
-        {!isPrimaryCycle && (
+      {hasCycleSelected && !isPrimaryCycle && (
+        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Mode coefficient</label>
             <select
               name="coefficientMode"
               value={formData.coefficientMode}
               onChange={onChange}
-              className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+              disabled={!hasNiveauxSelectionnes}
+              className={`w-full px-4 py-2.5 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring ${
+                hasNiveauxSelectionnes
+                  ? "bg-white"
+                  : "bg-muted/50 text-muted-foreground cursor-not-allowed"
+              }`}
             >
+              <option value="">Choisir un mode...</option>
               <option value="unique">Coefficient unique (tous niveaux)</option>
               {formData.niveaux.length > 1 && (
                 <option value="par_niveau">Coefficient par niveau sélectionné</option>
@@ -907,12 +967,50 @@ function MatiereFormFields({
                 </option>
               )}
             </select>
+            {formData.niveaux.length === 0 && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Aucun niveau sélectionné : choisissez d'abord les niveaux concernés.
+              </p>
+            )}
           </div>
-        )}
-      </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Coefficient <span className="text-danger">*</span>
+            </label>
+            <div className="relative">
+              <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+              <input
+                type="number"
+                name="coefficient"
+                value={formData.coefficientMode === "unique" ? displayNumber(formData.coefficient) : ""}
+                onChange={onChange}
+                required
+                disabled={formData.coefficientMode !== "unique"}
+                min="1"
+                max="9"
+                className={`w-full pl-10 pr-4 py-2.5 border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition ${
+                  formData.coefficientMode === "unique"
+                    ? "bg-white"
+                    : "bg-muted/50 text-muted-foreground cursor-not-allowed"
+                }`}
+              />
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {formData.coefficientMode === "unique"
+                ? "Utilisé uniquement en mode coefficient unique."
+                : formData.coefficientMode === "par_niveau"
+                  ? "Gelé: la saisie se fait dans les champs par niveau ci-dessous."
+                  : formData.coefficientMode === "par_cycle"
+                    ? "Gelé: la saisie se fait dans les coefficients par cycle ci-dessous."
+                    : "Choisissez d'abord un mode coefficient pour activer la saisie."}
+            </p>
+          </div>
+        </div>
+      )}
 
       {!isPrimaryCycle && formData.cycle === "Les_deux" && (
-        <details className="rounded-lg border border-border bg-muted/10 p-3" open={formData.coefficientMode === "par_cycle"}>
+        <details className="mt-4 rounded-lg border border-border bg-muted/10 p-3" open={formData.coefficientMode === "par_cycle"}>
           <summary className="cursor-pointer list-none text-sm font-medium text-foreground">
             Options avancées
           </summary>
@@ -937,7 +1035,7 @@ function MatiereFormFields({
 
       {!isPrimaryCycle &&
         (formData.coefficientMode === "par_cycle" || formData.coefficientMode === "par_niveau") && (
-        <div className="rounded-lg border border-border bg-muted/20 p-3">
+        <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3">
           {formData.coefficientMode === "par_cycle" && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
@@ -1010,46 +1108,6 @@ function MatiereFormFields({
         <p className="mt-1 text-xs text-muted-foreground">
           Une matière inactive reste disponible pour l'historique et peut être réactivée.
         </p>
-      </div>
-
-      <div>
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <label className="block text-sm font-medium text-foreground">
-            Niveaux concernés <span className="text-danger">*</span>
-          </label>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onSelectAllNiveaux}
-              className="rounded-md border border-input px-2.5 py-1 text-xs text-foreground hover:bg-accent transition"
-            >
-              Tout sélectionner
-            </button>
-            <button
-              type="button"
-              onClick={onClearAllNiveaux}
-              className="rounded-md border border-input px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent transition"
-            >
-              Tout désélectionner
-            </button>
-          </div>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-          {niveauxDisponibles.map((niveau) => (
-            <label
-              key={niveau}
-              className="flex items-center gap-2 rounded-lg border border-input px-3 py-2 text-sm"
-            >
-              <input
-                type="checkbox"
-                checked={formData.niveaux.includes(niveau)}
-                onChange={() => onToggleNiveau(niveau)}
-                className="h-4 w-4 rounded border-input text-primary focus:ring-ring"
-              />
-              <span>{niveau}</span>
-            </label>
-          ))}
-        </div>
       </div>
 
       {formData.niveaux.includes("Terminale") && (
