@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git commit -m \"$(cat <<''EOF''\nAjouter ROADMAP.md - Phase 3 Intégration Supabase\n\nRoadmap détaillée pour migration vers Supabase :\n\nPhase 3 organisée en 9 étapes :\n1. Configuration Supabase (projet + env + utils)\n2. Schéma DB complet (13 tables : profiles, etablissements, annees_scolaires, trimestres, matieres, classes, students, parents, student_parents, staff, absences, notes, emplois_du_temps)\n3. Row Level Security (RLS policies par rôle)\n4. Authentification (email/password + magic link)\n5. Migration state local → Supabase (hooks personnalisés)\n6. Permissions par rôle (super_admin, admin, enseignant, parent)\n7. Fonctionnalités avancées (upload, realtime, exports)\n8. Seed data & tests\n9. Optimisations (loading states, error boundaries, cache)\n\nDurée estimée : 16-24h (2-3 jours)\nOrdre recommandé : Config → Auth → Migration progressive → Tests\n\nStructure DB multi-tenant ready pour multi-établissement futur\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+      "Bash(git commit -m \"$(cat <<''EOF''\nAjouter ROADMAP.md - Phase 3 Intégration Supabase\n\nRoadmap détaillée pour migration vers Supabase :\n\nPhase 3 organisée en 9 étapes :\n1. Configuration Supabase (projet + env + utils)\n2. Schéma DB complet (13 tables : profiles, etablissements, annees_scolaires, trimestres, matieres, classes, students, parents, student_parents, staff, absences, notes, emplois_du_temps)\n3. Row Level Security (RLS policies par rôle)\n4. Authentification (email/password + magic link)\n5. Migration state local → Supabase (hooks personnalisés)\n6. Permissions par rôle (super_admin, admin, enseignant, parent)\n7. Fonctionnalités avancées (upload, realtime, exports)\n8. Seed data & tests\n9. Optimisations (loading states, error boundaries, cache)\n\nDurée estimée : 16-24h (2-3 jours)\nOrdre recommandé : Config → Auth → Migration progressive → Tests\n\nStructure DB multi-tenant ready pour multi-établissement futur\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(npm run build)",
+      "Bash(git push)",
+      "Bash(git remote get-url origin)",
+      "Read(//c/Users/OMEN/Documents/maison/**)"
     ],
     "deny": [],
     "ask": []
