@@ -28,6 +28,11 @@ type MatiereItem = {
   id: number;
   nom: string;
   coefficient: number;
+  coefficientMode?: "unique" | "par_cycle";
+  coefficientsParCycle?: {
+    primaire: number;
+    secondaire: number;
+  };
   couleur: string;
   cycle: CycleMatiere;
   niveaux: string[];
@@ -180,6 +185,28 @@ export default function SettingsPage() {
     setMatieres([...matieres, { ...newMatiere, nom, id: nextId }]);
   };
 
+  const handleAddMatieresBatch = (rows: Omit<MatiereItem, "id">[]) => {
+    if (rows.length === 0) return;
+    let nextId = matieres.reduce((max, m) => Math.max(max, m.id), 0);
+    const merged = [...matieres];
+    let added = 0;
+
+    for (const row of rows) {
+      const nom = row.nom.trim();
+      if (!nom || row.niveaux.length === 0) continue;
+      const exists = merged.some(
+        (m) => m.nom.toLowerCase() === nom.toLowerCase() && m.cycle === row.cycle
+      );
+      if (exists) continue;
+      nextId += 1;
+      merged.push({ ...row, nom, id: nextId });
+      added += 1;
+    }
+
+    setMatieres(merged);
+    alert(`${added} matière(s) ajoutée(s)${added < rows.length ? " (doublons ignorés)." : "."}`);
+  };
+
   const handleEditMatiere = (updatedMatiere: MatiereItem) => {
     const nom = updatedMatiere.nom.trim();
     if (!nom || updatedMatiere.niveaux.length === 0) {
@@ -326,6 +353,17 @@ export default function SettingsPage() {
       return matchSearch && matchCycle && matchNiveau;
     })
     .sort((a, b) => a.nom.localeCompare(b.nom, "fr-FR"));
+
+  const formatCoefficientLabel = (matiere: MatiereItem): string => {
+    if (
+      matiere.cycle === "Les_deux" &&
+      matiere.coefficientMode === "par_cycle" &&
+      matiere.coefficientsParCycle
+    ) {
+      return `P:${matiere.coefficientsParCycle.primaire} / S:${matiere.coefficientsParCycle.secondaire}`;
+    }
+    return String(matiere.coefficient);
+  };
 
   return (
     <div className="space-y-6">
@@ -877,7 +915,9 @@ export default function SettingsPage() {
                         ? `${matiere.niveaux.slice(0, 3).join(", ")} +${matiere.niveaux.length - 3}`
                         : matiere.niveaux.join(", ")}
                     </td>
-                    <td className="px-4 py-3 text-sm font-semibold text-foreground">{matiere.coefficient}</td>
+                    <td className="px-4 py-3 text-sm font-semibold text-foreground">
+                      {formatCoefficientLabel(matiere)}
+                    </td>
                     <td className="px-4 py-3 text-sm">
                       <button
                         type="button"
@@ -920,6 +960,8 @@ export default function SettingsPage() {
         isOpen={isAddMatiereOpen}
         onClose={() => setIsAddMatiereOpen(false)}
         onSubmit={handleAddMatiere}
+        onSubmitBatch={handleAddMatieresBatch}
+        existingMatieres={matieres.map((m) => ({ nom: m.nom, cycle: m.cycle }))}
       />
 
       {editingMatiere && (
@@ -928,6 +970,7 @@ export default function SettingsPage() {
           onClose={() => setEditingMatiere(null)}
           onSubmit={handleEditMatiere}
           matiere={editingMatiere}
+          existingMatieres={matieres.map((m) => ({ nom: m.nom, cycle: m.cycle }))}
         />
       )}
 
