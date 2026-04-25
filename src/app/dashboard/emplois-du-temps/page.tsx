@@ -1,9 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Filter, Download, Edit, Plus, Clock } from "lucide-react";
+import { Filter, Download, Edit, Clock } from "lucide-react";
 import { exportScheduleToPDF } from "@/utils/pdfExport";
+import {
+  DAY_NAMES,
+  DEFAULT_TIMETABLE_TECH_CONFIG,
+  generateTimeSlots,
+  getDisabledSlotIdsByDay,
+  loadTimetableTechConfigFromStorage,
+  type TimetableTechConfig,
+} from "@/lib/timetable-tech-config";
 
 // Données de démonstration
 const classesData = [
@@ -15,55 +23,45 @@ const classesData = [
   { id: 6, name: "6ème - Classe A", niveau: "6ème" },
 ];
 
-const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
-
-const creneaux = [
-  { id: 1, debut: "08:00", fin: "09:00" },
-  { id: 2, debut: "09:00", fin: "10:00" },
-  { id: 3, debut: "10:00", fin: "11:00" },
-  { id: 4, debut: "11:00", fin: "12:00" },
-  { id: 5, debut: "14:00", fin: "15:00" },
-  { id: 6, debut: "15:00", fin: "16:00" },
-  { id: 7, debut: "16:00", fin: "17:00" },
-];
-
 // Emploi du temps de démonstration pour CP - Classe A
 const emploiDuTempsDemo: Record<string, Record<number, { matiere: string; prof: string; salle: string }>> = {
   Lundi: {
     1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    3: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    5: { matiere: "Sciences", prof: "M. Bernard", salle: "Salle 101" },
-    6: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
+    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
+    5: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
+    7: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
+    9: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
   },
   Mardi: {
     1: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    3: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
+    2: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
     4: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
-    5: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
-    6: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
+    5: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
+    7: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
+    9: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
   },
   Mercredi: {
     1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
     2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Musique", prof: "M. Pierre", salle: "Salle Musique" },
+    5: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
   },
   Jeudi: {
     1: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    2: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    3: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
     5: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
-    6: { matiere: "Musique", prof: "M. Pierre", salle: "Salle Musique" },
+    7: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
+    9: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
   },
   Vendredi: {
     1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    3: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
-    5: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-    6: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
+    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
+    5: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
+    7: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
+    9: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
   },
 };
 
@@ -78,9 +76,34 @@ const matiereColors: Record<string, string> = {
   Musique: "bg-indigo-100 text-indigo-700 border-indigo-300",
 };
 
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(":").map(Number);
+  return h * 60 + m;
+}
+
 export default function EmploisDuTempsPage() {
   const router = useRouter();
   const [selectedClass, setSelectedClass] = useState("CP - Classe A");
+  const [techConfig, setTechConfig] = useState<TimetableTechConfig>(DEFAULT_TIMETABLE_TECH_CONFIG);
+  const isDemoClass = selectedClass === "CP - Classe A";
+  const emploiDuTemps = isDemoClass ? emploiDuTempsDemo : {};
+  const jours = techConfig.activeDays.length > 0 ? techConfig.activeDays : [...DAY_NAMES];
+  const creneaux = useMemo(() => generateTimeSlots(techConfig), [techConfig]);
+  const disabledSlotsByDay = useMemo(() => getDisabledSlotIdsByDay(techConfig, creneaux), [techConfig, creneaux]);
+
+  useEffect(() => {
+    setTechConfig(loadTimetableTechConfigFromStorage());
+  }, []);
+
+  const totalWeeklyHours = useMemo(() => {
+    const totalMinutes = jours.reduce((acc, day) => {
+      const dayMinutes = creneaux
+        .filter((slot) => slot.type === "course" && !(disabledSlotsByDay[day] || []).includes(slot.id))
+        .reduce((slotAcc, slot) => slotAcc + (toMinutes(slot.fin) - toMinutes(slot.debut)), 0);
+      return acc + dayMinutes;
+    }, 0);
+    return `${(totalMinutes / 60).toFixed(1)}h`;
+  }, [jours, creneaux, disabledSlotsByDay]);
 
   const handleExport = async () => {
     try {
@@ -97,6 +120,14 @@ export default function EmploisDuTempsPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Emplois du temps</h1>
         <p className="text-muted-foreground">Consultation et gestion des emplois du temps</p>
+      </div>
+
+      <div className="bg-warning/10 border border-warning/20 rounded-xl p-4">
+        <p className="text-sm font-medium text-foreground">Brouillon (MVP)</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Version de démonstration. La classe CP - Classe A contient un exemple prérempli.
+          Les horaires techniques sont configurables depuis Paramètres.
+        </p>
       </div>
 
       {/* Filtres */}
@@ -145,7 +176,7 @@ export default function EmploisDuTempsPage() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Heures/semaine</p>
-          <p className="text-2xl font-bold text-foreground mt-1">25h</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{totalWeeklyHours}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Matières</p>
@@ -194,11 +225,26 @@ export default function EmploisDuTempsPage() {
                     {creneau.debut} - {creneau.fin}
                   </td>
                   {jours.map((jour) => {
-                    const cours = emploiDuTempsDemo[jour]?.[creneau.id];
+                    const cours = emploiDuTemps[jour]?.[creneau.id];
+                    const isDisabled = disabledSlotsByDay[jour]?.includes(creneau.id);
 
                     return (
                       <td key={jour} className="px-2 py-2">
-                        {cours ? (
+                        {isDisabled ? (
+                          <div className="p-3 rounded-lg border-2 min-h-[72px] bg-muted/30 border-muted text-muted-foreground flex items-center justify-center text-xs font-medium">
+                            Fermé (demi-journée)
+                          </div>
+                        ) : creneau.type !== "course" ? (
+                          <div
+                            className={`p-3 rounded-lg border-2 min-h-[72px] flex items-center justify-center text-xs font-semibold ${
+                              creneau.type === "lunch"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-slate-100 text-slate-700 border-slate-300"
+                            }`}
+                          >
+                            {creneau.label}
+                          </div>
+                        ) : cours ? (
                           <div
                             className={`p-3 rounded-lg border-2 ${
                               matiereColors[cours.matiere] || "bg-gray-100 text-gray-700 border-gray-300"
@@ -244,7 +290,8 @@ export default function EmploisDuTempsPage() {
             <div>
               <p className="text-sm font-medium text-foreground">Information</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Les emplois du temps sont modifiables via le module de gestion.
+                Les pauses et récréations sont verrouillées visuellement dans la grille.
+                Les emplois du temps restent modifiables via le module de gestion.
                 Toute modification sera visible instantanément pour tous les utilisateurs.
               </p>
             </div>

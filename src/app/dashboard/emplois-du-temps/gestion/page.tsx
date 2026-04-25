@@ -1,8 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, X, AlertTriangle, CheckCircle } from "lucide-react";
+import { ArrowLeft, Save, X, AlertTriangle, Copy, RotateCcw, WandSparkles } from "lucide-react";
+import {
+  DAY_NAMES,
+  DEFAULT_TIMETABLE_TECH_CONFIG,
+  generateTimeSlots,
+  getDisabledSlotIdsByDay,
+  loadTimetableTechConfigFromStorage,
+  type TimetableTechConfig,
+} from "@/lib/timetable-tech-config";
 
 // Données de démonstration
 const classesData = [
@@ -44,18 +52,6 @@ const salles = [
   { id: 6, name: "Salle Musique" },
 ];
 
-const jours = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"];
-
-const creneaux = [
-  { id: 1, debut: "08:00", fin: "09:00" },
-  { id: 2, debut: "09:00", fin: "10:00" },
-  { id: 3, debut: "10:00", fin: "11:00" },
-  { id: 4, debut: "11:00", fin: "12:00" },
-  { id: 5, debut: "14:00", fin: "15:00" },
-  { id: 6, debut: "15:00", fin: "16:00" },
-  { id: 7, debut: "16:00", fin: "17:00" },
-];
-
 interface Cours {
   matiere: string;
   prof: string;
@@ -64,15 +60,90 @@ interface Cours {
 
 type EmploiDuTemps = Record<string, Record<number, Cours>>;
 
+const DEMO_TIMETABLE_TEMPLATE: EmploiDuTemps = {
+  Lundi: {
+    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
+    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
+    5: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
+    7: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
+    9: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
+  },
+  Mardi: {
+    1: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    2: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
+    5: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
+    7: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
+    9: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
+  },
+  Mercredi: {
+    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
+    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Musique", prof: "M. Pierre", salle: "Salle Musique" },
+    5: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
+  },
+  Jeudi: {
+    1: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
+    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
+    5: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
+    7: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
+    9: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
+  },
+  Vendredi: {
+    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
+    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
+    4: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
+    5: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
+    7: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
+    9: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
+  },
+};
+
+function cloneTimetable(timetable: EmploiDuTemps): EmploiDuTemps {
+  const cloned: EmploiDuTemps = {};
+  Object.entries(timetable).forEach(([day, daySlots]) => {
+    cloned[day] = {};
+    Object.entries(daySlots).forEach(([slotId, course]) => {
+      cloned[day][Number(slotId)] = { ...course };
+    });
+  });
+  return cloned;
+}
+
 export default function GestionEmploisDuTempsPage() {
   const router = useRouter();
   const [selectedClass, setSelectedClass] = useState("CP - Classe A");
-  const [emploiDuTemps, setEmploiDuTemps] = useState<EmploiDuTemps>({});
+  const [techConfig, setTechConfig] = useState<TimetableTechConfig>(DEFAULT_TIMETABLE_TECH_CONFIG);
+  const [emploiDuTemps, setEmploiDuTemps] = useState<EmploiDuTemps>(cloneTimetable(DEMO_TIMETABLE_TEMPLATE));
   const [selectedSlot, setSelectedSlot] = useState<{ jour: string; creneau: number } | null>(null);
   const [formData, setFormData] = useState({ matiere: "", prof: "", salle: "" });
   const [conflicts, setConflicts] = useState<string[]>([]);
+  const [copySourceDay, setCopySourceDay] = useState("Lundi");
+
+  useEffect(() => {
+    setTechConfig(loadTimetableTechConfigFromStorage());
+  }, []);
+
+  const jours = techConfig.activeDays.length > 0 ? techConfig.activeDays : [...DAY_NAMES];
+  const creneaux = useMemo(() => generateTimeSlots(techConfig), [techConfig]);
+  const disabledSlotsByDay = useMemo(() => getDisabledSlotIdsByDay(techConfig, creneaux), [techConfig, creneaux]);
+
+  const isSlotDisabled = (day: string, slotId: number): boolean => disabledSlotsByDay[day]?.includes(slotId) ?? false;
+
+  useEffect(() => {
+    if (!jours.includes(copySourceDay)) {
+      setCopySourceDay(jours[0] ?? "Lundi");
+    }
+  }, [copySourceDay, jours]);
 
   const handleSlotClick = (jour: string, creneauId: number) => {
+    const currentSlot = creneaux.find((slot) => slot.id === creneauId);
+    if (!currentSlot || currentSlot.type !== "course" || isSlotDisabled(jour, creneauId)) {
+      return;
+    }
+
     const existingCours = emploiDuTemps[jour]?.[creneauId];
     setSelectedSlot({ jour, creneau: creneauId });
     if (existingCours) {
@@ -88,25 +159,13 @@ export default function GestionEmploisDuTempsPage() {
   };
 
   const checkConflicts = (jour: string, creneauId: number, prof: string, salle: string): string[] => {
-    const detected: string[] = [];
-
-    // Vérifier si le prof est déjà occupé ailleurs
-    Object.entries(emploiDuTemps).forEach(([j, creneauxJour]) => {
-      const cours = creneauxJour[creneauId];
-      if (cours && cours.prof === prof && j !== jour) {
-        detected.push(`${prof} est déjà occupé(e) en ${j} à ce créneau`);
-      }
-    });
-
-    // Vérifier si la salle est déjà occupée
-    Object.entries(emploiDuTemps).forEach(([j, creneauxJour]) => {
-      const cours = creneauxJour[creneauId];
-      if (cours && cours.salle === salle && j !== jour) {
-        detected.push(`${salle} est déjà occupée en ${j} à ce créneau`);
-      }
-    });
-
-    return detected;
+    // MVP mono-grille: on garde l'API de contrôle de conflits,
+    // mais sans référentiel multi-classes il n'y a pas de conflit bloquant fiable ici.
+    void jour;
+    void creneauId;
+    void prof;
+    void salle;
+    return [];
   };
 
   const handleSaveCours = () => {
@@ -162,6 +221,39 @@ export default function GestionEmploisDuTempsPage() {
     alert("Emploi du temps enregistré avec succès !");
   };
 
+  const handleApplyTemplate = () => {
+    setEmploiDuTemps(cloneTimetable(DEMO_TIMETABLE_TEMPLATE));
+    setSelectedSlot(null);
+    setConflicts([]);
+  };
+
+  const handleResetGrid = () => {
+    setEmploiDuTemps({});
+    setSelectedSlot(null);
+    setConflicts([]);
+  };
+
+  const handleCopyDayToWeek = () => {
+    setEmploiDuTemps((prev) => {
+      const source = prev[copySourceDay] ?? {};
+      const next = cloneTimetable(prev);
+
+      jours.forEach((day) => {
+        if (day === copySourceDay) return;
+        const copiedDay: Record<number, Cours> = {};
+        Object.entries(source).forEach(([slotIdRaw, course]) => {
+          const slotId = Number(slotIdRaw);
+          const slot = creneaux.find((s) => s.id === slotId);
+          if (!slot || slot.type !== "course" || isSlotDisabled(day, slotId)) return;
+          copiedDay[slotId] = { ...course };
+        });
+        next[day] = copiedDay;
+      });
+
+      return next;
+    });
+  };
+
   const matiereColors: Record<string, string> = {
     Français: "bg-blue-100 text-blue-700 border-blue-300",
     Mathématiques: "bg-purple-100 text-purple-700 border-purple-300",
@@ -193,22 +285,80 @@ export default function GestionEmploisDuTempsPage() {
         </button>
       </div>
 
+      {/* Statut MVP */}
+      <div className="bg-warning/10 border border-warning/20 rounded-xl p-4">
+        <p className="text-sm font-medium text-foreground">Brouillon (MVP)</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Cette version est conçue pour préparer rapidement une grille avant la logique métier complète.
+          Les horaires techniques se règlent dans Paramètres.
+        </p>
+      </div>
+
       {/* Sélection classe */}
       <div className="bg-card border border-border rounded-xl p-6">
-        <label className="block text-sm font-medium text-foreground mb-2">
-          Classe <span className="text-danger">*</span>
-        </label>
-        <select
-          value={selectedClass}
-          onChange={(e) => setSelectedClass(e.target.value)}
-          className="w-full max-w-md px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
-        >
-          {classesData.map((classe) => (
-            <option key={classe.id} value={classe.name}>
-              {classe.name}
-            </option>
-          ))}
-        </select>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Classe <span className="text-danger">*</span>
+            </label>
+            <select
+              value={selectedClass}
+              onChange={(e) => setSelectedClass(e.target.value)}
+              className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
+            >
+              {classesData.map((classe) => (
+                <option key={classe.id} value={classe.name}>
+                  {classe.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Copier une journée</label>
+            <div className="flex items-center gap-2">
+              <select
+                value={copySourceDay}
+                onChange={(e) => setCopySourceDay(e.target.value)}
+                className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
+              >
+                {jours.map((jour) => (
+                  <option key={jour} value={jour}>
+                    {jour}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={handleCopyDayToWeek}
+                className="inline-flex items-center gap-2 whitespace-nowrap px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
+                title="Copier ce jour vers les autres jours"
+              >
+                <Copy className="w-4 h-4" />
+                Copier
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-end gap-2">
+            <button
+              type="button"
+              onClick={handleApplyTemplate}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
+            >
+              <WandSparkles className="w-4 h-4" />
+              Modèle
+            </button>
+            <button
+              type="button"
+              onClick={handleResetGrid}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition font-medium"
+            >
+              <RotateCcw className="w-4 h-4" />
+              Réinitialiser
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Info */}
@@ -220,8 +370,8 @@ export default function GestionEmploisDuTempsPage() {
           <div>
             <p className="text-sm font-medium text-foreground">Mode édition</p>
             <p className="text-xs text-muted-foreground mt-1">
-              Cliquez sur une case pour ajouter ou modifier un cours. Le système détecte automatiquement les conflits
-              (prof ou salle déjà occupés).
+              Cliquez sur une case pour ajouter ou modifier un cours. Les pauses et demi-journées sont protégées pour
+              éviter les modifications accidentelles.
             </p>
           </div>
         </div>
@@ -253,29 +403,46 @@ export default function GestionEmploisDuTempsPage() {
                   </td>
                   {jours.map((jour) => {
                     const cours = emploiDuTemps[jour]?.[creneau.id];
+                    const isDisabled = isSlotDisabled(jour, creneau.id);
 
                     return (
                       <td key={jour} className="px-2 py-2">
-                        <div
-                          onClick={() => handleSlotClick(jour, creneau.id)}
-                          className={`p-3 rounded-lg border-2 cursor-pointer transition min-h-[80px] ${
-                            cours
-                              ? `${matiereColors[cours.matiere] || "bg-gray-100 border-gray-300"} hover:shadow-md`
-                              : "border-dashed border-muted-foreground/30 hover:border-primary hover:bg-primary/5"
-                          }`}
-                        >
-                          {cours ? (
-                            <>
-                              <p className="font-semibold text-sm">{cours.matiere}</p>
-                              <p className="text-xs opacity-80 mt-1">{cours.prof}</p>
-                              <p className="text-xs opacity-70 mt-0.5">{cours.salle}</p>
-                            </>
-                          ) : (
-                            <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                              + Ajouter
-                            </div>
-                          )}
-                        </div>
+                        {isDisabled ? (
+                          <div className="p-3 rounded-lg border-2 min-h-[80px] bg-muted/30 border-muted text-muted-foreground flex items-center justify-center text-xs font-medium">
+                            Fermé (demi-journée)
+                          </div>
+                        ) : creneau.type !== "course" ? (
+                          <div
+                            className={`p-3 rounded-lg border-2 min-h-[80px] flex items-center justify-center text-xs font-semibold ${
+                              creneau.type === "lunch"
+                                ? "bg-amber-50 text-amber-700 border-amber-200"
+                                : "bg-slate-100 text-slate-700 border-slate-300"
+                            }`}
+                          >
+                            {creneau.label}
+                          </div>
+                        ) : (
+                          <div
+                            onClick={() => handleSlotClick(jour, creneau.id)}
+                            className={`p-3 rounded-lg border-2 cursor-pointer transition min-h-[80px] ${
+                              cours
+                                ? `${matiereColors[cours.matiere] || "bg-gray-100 border-gray-300"} hover:shadow-md`
+                                : "border-dashed border-muted-foreground/30 hover:border-primary hover:bg-primary/5"
+                            }`}
+                          >
+                            {cours ? (
+                              <>
+                                <p className="font-semibold text-sm">{cours.matiere}</p>
+                                <p className="text-xs opacity-80 mt-1">{cours.prof}</p>
+                                <p className="text-xs opacity-70 mt-0.5">{cours.salle}</p>
+                              </>
+                            ) : (
+                              <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
+                                + Ajouter cours
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </td>
                     );
                   })}
