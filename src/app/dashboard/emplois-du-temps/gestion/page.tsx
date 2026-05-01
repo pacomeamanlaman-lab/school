@@ -1,105 +1,27 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save, X, AlertTriangle, Copy, RotateCcw, WandSparkles } from "lucide-react";
+import { ArrowLeft, Save, X, AlertTriangle, Copy, RotateCcw } from "lucide-react";
 import {
   DAY_NAMES,
   DEFAULT_TIMETABLE_TECH_CONFIG,
   generateTimeSlots,
   getDisabledSlotIdsByDay,
-  loadTimetableTechConfigFromStorage,
   type TimetableTechConfig,
 } from "@/lib/timetable-tech-config";
+import FlashNotice from "@/components/FlashNotice";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { createClient } from "@/lib/supabase/client";
+import { fetchTimetableTechConfig } from "@/lib/supabase/etablissement-settings";
+import { dayDbFromLabel } from "@/lib/supabase/day-map";
+import { buildTimetableGridFromRows, type TimetableGrid, type TimetableGridCell } from "@/lib/timetable-db-map";
 
-// Données de démonstration
-const classesData = [
-  { id: 1, name: "CP - Classe A", niveau: "CP" },
-  { id: 2, name: "CE1 - Classe A", niveau: "CE1" },
-  { id: 3, name: "CE2 - Classe A", niveau: "CE2" },
-  { id: 4, name: "CM1 - Classe A", niveau: "CM1" },
-  { id: 5, name: "CM2 - Classe A", niveau: "CM2" },
-  { id: 6, name: "6ème - Classe A", niveau: "6ème" },
-];
+type ClasseOption = { id: string; name: string };
+type MatiereOption = { id: string; nom: string };
+type EnseignantOption = { id: string; label: string };
 
-const matieres = [
-  { id: 1, name: "Français" },
-  { id: 2, name: "Mathématiques" },
-  { id: 3, name: "Histoire-Géo" },
-  { id: 4, name: "Sciences" },
-  { id: 5, name: "Anglais" },
-  { id: 6, name: "EPS" },
-  { id: 7, name: "Arts plastiques" },
-  { id: 8, name: "Musique" },
-];
-
-const enseignants = [
-  { id: 1, name: "Mme Dupont", matieres: ["Français", "Mathématiques"] },
-  { id: 2, name: "M. Martin", matieres: ["Histoire-Géo"] },
-  { id: 3, name: "M. Bernard", matieres: ["Sciences"] },
-  { id: 4, name: "Mme Sophie", matieres: ["Anglais"] },
-  { id: 5, name: "M. Laurent", matieres: ["EPS"] },
-  { id: 6, name: "Mme Claire", matieres: ["Arts plastiques"] },
-  { id: 7, name: "M. Pierre", matieres: ["Musique"] },
-];
-
-const salles = [
-  { id: 1, name: "Salle 101" },
-  { id: 2, name: "Salle 102" },
-  { id: 3, name: "Labo" },
-  { id: 4, name: "Gymnase" },
-  { id: 5, name: "Salle Arts" },
-  { id: 6, name: "Salle Musique" },
-];
-
-interface Cours {
-  matiere: string;
-  prof: string;
-  salle: string;
-}
-
-type EmploiDuTemps = Record<string, Record<number, Cours>>;
-
-const DEMO_TIMETABLE_TEMPLATE: EmploiDuTemps = {
-  Lundi: {
-    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    5: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
-    7: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-    9: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-  },
-  Mardi: {
-    1: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
-    5: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    7: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
-    9: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
-  },
-  Mercredi: {
-    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Musique", prof: "M. Pierre", salle: "Salle Musique" },
-    5: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-  },
-  Jeudi: {
-    1: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    5: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
-    7: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
-    9: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-  },
-  Vendredi: {
-    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    5: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
-    7: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-    9: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
-  },
-};
+type EmploiDuTemps = TimetableGrid;
 
 function cloneTimetable(timetable: EmploiDuTemps): EmploiDuTemps {
   const cloned: EmploiDuTemps = {};
@@ -114,16 +36,36 @@ function cloneTimetable(timetable: EmploiDuTemps): EmploiDuTemps {
 
 export default function GestionEmploisDuTempsPage() {
   const router = useRouter();
-  const [selectedClass, setSelectedClass] = useState("CP - Classe A");
+  const [classes, setClasses] = useState<ClasseOption[]>([]);
+  const [matieres, setMatieres] = useState<MatiereOption[]>([]);
+  const [enseignants, setEnseignants] = useState<EnseignantOption[]>([]);
+  const [selectedClasseId, setSelectedClasseId] = useState("");
   const [techConfig, setTechConfig] = useState<TimetableTechConfig>(DEFAULT_TIMETABLE_TECH_CONFIG);
-  const [emploiDuTemps, setEmploiDuTemps] = useState<EmploiDuTemps>(cloneTimetable(DEMO_TIMETABLE_TEMPLATE));
+  const [emploiDuTemps, setEmploiDuTemps] = useState<EmploiDuTemps>({});
   const [selectedSlot, setSelectedSlot] = useState<{ jour: string; creneau: number } | null>(null);
-  const [formData, setFormData] = useState({ matiere: "", prof: "", salle: "" });
+  const [formData, setFormData] = useState({ matiereId: "", enseignantId: "", salle: "" });
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [copySourceDay, setCopySourceDay] = useState("Lundi");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { notice, flash } = useFlashNotice();
+
+  const selectedClassName = useMemo(
+    () => classes.find((c) => c.id === selectedClasseId)?.name ?? "",
+    [classes, selectedClasseId]
+  );
 
   useEffect(() => {
-    setTechConfig(loadTimetableTechConfigFromStorage());
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const cfg = await fetchTimetableTechConfig(supabase);
+      if (!cancelled) setTechConfig(cfg);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const jours = techConfig.activeDays.length > 0 ? techConfig.activeDays : [...DAY_NAMES];
@@ -132,11 +74,106 @@ export default function GestionEmploisDuTempsPage() {
 
   const isSlotDisabled = (day: string, slotId: number): boolean => disabledSlotsByDay[day]?.includes(slotId) ?? false;
 
+  const loadMeta = useCallback(async () => {
+    const supabase = createClient();
+    const [{ data: cl, error: e1 }, { data: mat, error: e2 }, { data: profs, error: e3 }] = await Promise.all([
+      supabase.from("classes").select("id, name").eq("status", "active").order("niveau"),
+      supabase.from("matieres").select("id, nom").order("nom"),
+      supabase
+        .from("profiles")
+        .select("id, first_name, last_name, role")
+        .in("role", ["enseignant", "admin", "super_admin"])
+        .eq("status", "active"),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    if (e3) throw e3;
+    setClasses((cl ?? []).map((r) => ({ id: r.id as string, name: r.name as string })));
+    setMatieres((mat ?? []).map((r) => ({ id: r.id as string, nom: r.nom as string })));
+    setEnseignants(
+      (profs ?? []).map((p) => ({
+        id: p.id as string,
+        label: `${p.first_name} ${p.last_name}`.trim(),
+      }))
+    );
+    setSelectedClasseId((prev) => prev || (cl ?? [])[0]?.id || "");
+  }, []);
+
+  const loadEdt = useCallback(
+    async (classeId: string) => {
+      if (!classeId) {
+        setEmploiDuTemps({});
+        return;
+      }
+      const supabase = createClient();
+      const { data: rows, error: e1 } = await supabase
+        .from("emplois_du_temps")
+        .select(
+          `
+          jour, heure_debut, heure_fin, enseignant_id,
+          matieres ( id, nom )
+        `
+        )
+        .eq("classe_id", classeId);
+      if (e1) throw e1;
+      const uids = [...new Set((rows ?? []).map((r) => r.enseignant_id as string | null).filter(Boolean))] as string[];
+      const profMap = new Map<string, string>();
+      if (uids.length) {
+        const { data: plist, error: e2 } = await supabase
+          .from("profiles")
+          .select("id, first_name, last_name")
+          .in("id", uids);
+        if (e2) throw e2;
+        for (const p of plist ?? []) {
+          profMap.set(p.id as string, `${p.first_name} ${p.last_name}`.trim());
+        }
+      }
+      setEmploiDuTemps(buildTimetableGridFromRows(rows ?? [], creneaux, profMap));
+    },
+    [creneaux]
+  );
+
   useEffect(() => {
-    if (!jours.includes(copySourceDay)) {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        await loadMeta();
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Erreur");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadMeta]);
+
+  useEffect(() => {
+    if (!selectedClasseId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await loadEdt(selectedClasseId);
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Erreur EDT");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClasseId, loadEdt]);
+
+  useEffect(() => {
+    if (!jours.some((j) => j === copySourceDay)) {
       setCopySourceDay(jours[0] ?? "Lundi");
     }
   }, [copySourceDay, jours]);
+
+  const matiereNom = (id: string) => matieres.find((m) => m.id === id)?.nom ?? "";
+  const enseignantLabel = (id: string) => enseignants.find((e) => e.id === id)?.label ?? "";
 
   const handleSlotClick = (jour: string, creneauId: number) => {
     const currentSlot = creneaux.find((slot) => slot.id === creneauId);
@@ -148,83 +185,111 @@ export default function GestionEmploisDuTempsPage() {
     setSelectedSlot({ jour, creneau: creneauId });
     if (existingCours) {
       setFormData({
-        matiere: existingCours.matiere,
-        prof: existingCours.prof,
-        salle: existingCours.salle,
+        matiereId: existingCours.matiereId,
+        enseignantId: existingCours.enseignantId,
+        salle: existingCours.salle === "—" ? "" : existingCours.salle,
       });
     } else {
-      setFormData({ matiere: "", prof: "", salle: "" });
+      setFormData({ matiereId: "", enseignantId: "", salle: "" });
     }
     setConflicts([]);
   };
 
-  const checkConflicts = (jour: string, creneauId: number, prof: string, salle: string): string[] => {
-    // MVP mono-grille: on garde l'API de contrôle de conflits,
-    // mais sans référentiel multi-classes il n'y a pas de conflit bloquant fiable ici.
-    void jour;
-    void creneauId;
-    void prof;
-    void salle;
-    return [];
-  };
+  const checkConflicts = (): string[] => [];
 
   const handleSaveCours = () => {
-    if (!selectedSlot || !formData.matiere || !formData.prof || !formData.salle) {
-      alert("Veuillez remplir tous les champs");
+    if (!selectedSlot || !formData.matiereId || !formData.enseignantId) {
+      flash("Veuillez sélectionner une matière et un enseignant.", "error");
       return;
     }
-
-    const detectedConflicts = checkConflicts(
-      selectedSlot.jour,
-      selectedSlot.creneau,
-      formData.prof,
-      formData.salle
-    );
-
+    const detectedConflicts = checkConflicts();
     if (detectedConflicts.length > 0) {
       setConflicts(detectedConflicts);
       return;
     }
-
+    const salle = formData.salle.trim() || "—";
+    const cell: TimetableGridCell = {
+      matiere: matiereNom(formData.matiereId),
+      prof: enseignantLabel(formData.enseignantId),
+      salle,
+      matiereId: formData.matiereId,
+      enseignantId: formData.enseignantId,
+    };
     setEmploiDuTemps({
       ...emploiDuTemps,
       [selectedSlot.jour]: {
         ...emploiDuTemps[selectedSlot.jour],
-        [selectedSlot.creneau]: {
-          matiere: formData.matiere,
-          prof: formData.prof,
-          salle: formData.salle,
-        },
+        [selectedSlot.creneau]: cell,
       },
     });
-
     setSelectedSlot(null);
-    setFormData({ matiere: "", prof: "", salle: "" });
+    setFormData({ matiereId: "", enseignantId: "", salle: "" });
   };
 
   const handleDeleteCours = () => {
     if (!selectedSlot) return;
-
     const newEmploiDuTemps = { ...emploiDuTemps };
     if (newEmploiDuTemps[selectedSlot.jour]) {
-      delete newEmploiDuTemps[selectedSlot.jour][selectedSlot.creneau];
+      const copy = { ...newEmploiDuTemps[selectedSlot.jour] };
+      delete copy[selectedSlot.creneau];
+      newEmploiDuTemps[selectedSlot.jour] = copy;
     }
-
     setEmploiDuTemps(newEmploiDuTemps);
     setSelectedSlot(null);
-    setFormData({ matiere: "", prof: "", salle: "" });
+    setFormData({ matiereId: "", enseignantId: "", salle: "" });
   };
 
-  const handleSaveEmploiDuTemps = () => {
-    // TODO: Sauvegarder dans Supabase
-    console.log("Sauvegarde emploi du temps:", { classe: selectedClass, emploiDuTemps });
-    alert("Emploi du temps enregistré avec succès !");
+  const handleSaveEmploiDuTemps = async () => {
+    if (!selectedClasseId) return;
+    const supabase = createClient();
+    setSaving(true);
+    setError(null);
+    try {
+      const { error: delE } = await supabase.from("emplois_du_temps").delete().eq("classe_id", selectedClasseId);
+      if (delE) throw delE;
+
+      const rows: {
+        classe_id: string;
+        matiere_id: string;
+        enseignant_id: string;
+        jour: string;
+        heure_debut: string;
+        heure_fin: string;
+      }[] = [];
+
+      for (const jour of jours) {
+        const jourDb = dayDbFromLabel(jour);
+        const dayMap = emploiDuTemps[jour] ?? {};
+        for (const [slotIdStr, cours] of Object.entries(dayMap)) {
+          const slotId = Number(slotIdStr);
+          const slot = creneaux.find((s) => s.id === slotId);
+          if (!slot || slot.type !== "course" || !cours.matiereId || !cours.enseignantId) continue;
+          rows.push({
+            classe_id: selectedClasseId,
+            matiere_id: cours.matiereId,
+            enseignant_id: cours.enseignantId,
+            jour: jourDb,
+            heure_debut: slot.debut,
+            heure_fin: slot.fin,
+          });
+        }
+      }
+
+      if (rows.length) {
+        const { error: insE } = await supabase.from("emplois_du_temps").insert(rows);
+        if (insE) throw insE;
+      }
+      await loadEdt(selectedClasseId);
+      flash("Emploi du temps enregistré.", "success");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur enregistrement");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleApplyTemplate = () => {
-    setEmploiDuTemps(cloneTimetable(DEMO_TIMETABLE_TEMPLATE));
-    setSelectedSlot(null);
-    setConflicts([]);
+  const handleReloadFromServer = () => {
+    if (selectedClasseId) void loadEdt(selectedClasseId);
   };
 
   const handleResetGrid = () => {
@@ -237,10 +302,9 @@ export default function GestionEmploisDuTempsPage() {
     setEmploiDuTemps((prev) => {
       const source = prev[copySourceDay] ?? {};
       const next = cloneTimetable(prev);
-
       jours.forEach((day) => {
         if (day === copySourceDay) return;
-        const copiedDay: Record<number, Cours> = {};
+        const copiedDay: Record<number, TimetableGridCell> = {};
         Object.entries(source).forEach(([slotIdRaw, course]) => {
           const slotId = Number(slotIdRaw);
           const slot = creneaux.find((s) => s.id === slotId);
@@ -249,7 +313,6 @@ export default function GestionEmploisDuTempsPage() {
         });
         next[day] = copiedDay;
       });
-
       return next;
     });
   };
@@ -258,6 +321,7 @@ export default function GestionEmploisDuTempsPage() {
     Français: "bg-blue-100 text-blue-700 border-blue-300",
     Mathématiques: "bg-purple-100 text-purple-700 border-purple-300",
     Sciences: "bg-green-100 text-green-700 border-green-300",
+    "Histoire-Géographie": "bg-orange-100 text-orange-700 border-orange-300",
     "Histoire-Géo": "bg-orange-100 text-orange-700 border-orange-300",
     Anglais: "bg-pink-100 text-pink-700 border-pink-300",
     EPS: "bg-red-100 text-red-700 border-red-300",
@@ -267,34 +331,30 @@ export default function GestionEmploisDuTempsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      <FlashNotice payload={notice} />
       <div className="flex items-center gap-4">
-        <button onClick={() => router.back()} className="p-2 hover:bg-accent rounded-lg transition">
+        <button type="button" onClick={() => router.back()} className="p-2 hover:bg-accent rounded-lg transition">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Gestion des emplois du temps</h1>
-          <p className="text-muted-foreground">Créer et modifier l'emploi du temps</p>
+          <p className="text-muted-foreground">Enregistrement Supabase (emplois_du_temps)</p>
         </div>
         <button
-          onClick={handleSaveEmploiDuTemps}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
+          type="button"
+          disabled={saving || !selectedClasseId}
+          onClick={() => void handleSaveEmploiDuTemps()}
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
         >
           <Save className="w-4 h-4" />
-          Enregistrer
+          {saving ? "Enregistrement…" : "Enregistrer"}
         </button>
       </div>
 
-      {/* Statut MVP */}
-      <div className="bg-warning/10 border border-warning/20 rounded-xl p-4">
-        <p className="text-sm font-medium text-foreground">Brouillon (MVP)</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Cette version est conçue pour préparer rapidement une grille avant la logique métier complète.
-          Les horaires techniques se règlent dans Paramètres.
-        </p>
-      </div>
+      {error ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+      ) : null}
 
-      {/* Sélection classe */}
       <div className="bg-card border border-border rounded-xl p-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div>
@@ -302,12 +362,13 @@ export default function GestionEmploisDuTempsPage() {
               Classe <span className="text-danger">*</span>
             </label>
             <select
-              value={selectedClass}
-              onChange={(e) => setSelectedClass(e.target.value)}
+              value={selectedClasseId}
+              onChange={(e) => setSelectedClasseId(e.target.value)}
+              disabled={loading}
               className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
             >
-              {classesData.map((classe) => (
-                <option key={classe.id} value={classe.name}>
+              {classes.map((classe) => (
+                <option key={classe.id} value={classe.id}>
                   {classe.name}
                 </option>
               ))}
@@ -332,7 +393,6 @@ export default function GestionEmploisDuTempsPage() {
                 type="button"
                 onClick={handleCopyDayToWeek}
                 className="inline-flex items-center gap-2 whitespace-nowrap px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
-                title="Copier ce jour vers les autres jours"
               >
                 <Copy className="w-4 h-4" />
                 Copier
@@ -340,14 +400,13 @@ export default function GestionEmploisDuTempsPage() {
             </div>
           </div>
 
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-2 flex-wrap">
             <button
               type="button"
-              onClick={handleApplyTemplate}
+              onClick={handleReloadFromServer}
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
             >
-              <WandSparkles className="w-4 h-4" />
-              Modèle
+              Recharger
             </button>
             <button
               type="button"
@@ -355,32 +414,23 @@ export default function GestionEmploisDuTempsPage() {
               className="inline-flex items-center gap-2 px-4 py-2.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition font-medium"
             >
               <RotateCcw className="w-4 h-4" />
-              Réinitialiser
+              Vider la grille
             </button>
           </div>
         </div>
       </div>
 
-      {/* Info */}
       <div className="bg-info/10 border border-info/20 rounded-xl p-4">
-        <div className="flex items-start gap-3">
-          <div className="w-6 h-6 bg-info/20 rounded-full flex items-center justify-center flex-shrink-0">
-            <span className="text-info text-sm font-bold">i</span>
-          </div>
-          <div>
-            <p className="text-sm font-medium text-foreground">Mode édition</p>
-            <p className="text-xs text-muted-foreground mt-1">
-              Cliquez sur une case pour ajouter ou modifier un cours. Les pauses et demi-journées sont protégées pour
-              éviter les modifications accidentelles.
-            </p>
-          </div>
-        </div>
+        <p className="text-sm font-medium text-foreground">Créneaux</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Les horaires (début/fin des cases) suivent la configuration technique dans Paramètres. La colonne salle est
+          locale (non persistée en base sur ce schéma).
+        </p>
       </div>
 
-      {/* Grille emploi du temps */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
-          <h3 className="text-lg font-semibold text-foreground">Emploi du temps - {selectedClass}</h3>
+          <h3 className="text-lg font-semibold text-foreground">Emploi du temps - {selectedClassName}</h3>
         </div>
 
         <div className="overflow-x-auto">
@@ -423,6 +473,11 @@ export default function GestionEmploisDuTempsPage() {
                           </div>
                         ) : (
                           <div
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") handleSlotClick(jour, creneau.id);
+                            }}
                             onClick={() => handleSlotClick(jour, creneau.id)}
                             className={`p-3 rounded-lg border-2 cursor-pointer transition min-h-[80px] ${
                               cours
@@ -453,22 +508,20 @@ export default function GestionEmploisDuTempsPage() {
         </div>
       </div>
 
-      {/* Modal d'édition */}
       {selectedSlot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedSlot(null)}></div>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedSlot(null)} aria-hidden />
           <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-foreground">
                 {emploiDuTemps[selectedSlot.jour]?.[selectedSlot.creneau] ? "Modifier" : "Ajouter"} un cours
               </h3>
-              <button onClick={() => setSelectedSlot(null)} className="p-2 hover:bg-accent rounded-lg transition">
+              <button type="button" onClick={() => setSelectedSlot(null)} className="p-2 hover:bg-accent rounded-lg transition">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div className="space-y-4">
-              {/* Info créneau */}
               <div className="p-3 bg-muted rounded-lg">
                 <p className="text-sm font-medium text-foreground">
                   {selectedSlot.jour} • {creneaux.find((c) => c.id === selectedSlot.creneau)?.debut} -{" "}
@@ -476,66 +529,53 @@ export default function GestionEmploisDuTempsPage() {
                 </p>
               </div>
 
-              {/* Matière */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Matière <span className="text-danger">*</span>
                 </label>
                 <select
-                  value={formData.matiere}
-                  onChange={(e) => setFormData({ ...formData, matiere: e.target.value })}
+                  value={formData.matiereId}
+                  onChange={(e) => setFormData({ ...formData, matiereId: e.target.value })}
                   className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
                 >
                   <option value="">Sélectionner une matière</option>
                   {matieres.map((m) => (
-                    <option key={m.id} value={m.name}>
-                      {m.name}
+                    <option key={m.id} value={m.id}>
+                      {m.nom}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Enseignant */}
               <div>
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Enseignant <span className="text-danger">*</span>
                 </label>
                 <select
-                  value={formData.prof}
-                  onChange={(e) => setFormData({ ...formData, prof: e.target.value })}
+                  value={formData.enseignantId}
+                  onChange={(e) => setFormData({ ...formData, enseignantId: e.target.value })}
                   className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
                 >
                   <option value="">Sélectionner un enseignant</option>
-                  {enseignants
-                    .filter((e) => !formData.matiere || e.matieres.includes(formData.matiere))
-                    .map((e) => (
-                      <option key={e.id} value={e.name}>
-                        {e.name}
-                      </option>
-                    ))}
-                </select>
-              </div>
-
-              {/* Salle */}
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Salle <span className="text-danger">*</span>
-                </label>
-                <select
-                  value={formData.salle}
-                  onChange={(e) => setFormData({ ...formData, salle: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
-                >
-                  <option value="">Sélectionner une salle</option>
-                  {salles.map((s) => (
-                    <option key={s.id} value={s.name}>
-                      {s.name}
+                  {enseignants.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.label}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Conflits */}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">Salle (affichage)</label>
+                <input
+                  type="text"
+                  value={formData.salle}
+                  onChange={(e) => setFormData({ ...formData, salle: e.target.value })}
+                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                  placeholder="Salle 101"
+                />
+              </div>
+
               {conflicts.length > 0 && (
                 <div className="p-3 bg-danger/10 border border-danger/20 rounded-lg">
                   <div className="flex items-start gap-2">
@@ -553,10 +593,10 @@ export default function GestionEmploisDuTempsPage() {
               )}
             </div>
 
-            {/* Actions */}
             <div className="flex items-center justify-between gap-3 mt-6 pt-6 border-t border-border">
               {emploiDuTemps[selectedSlot.jour]?.[selectedSlot.creneau] && (
                 <button
+                  type="button"
                   onClick={handleDeleteCours}
                   className="px-4 py-2 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition font-medium"
                 >
@@ -565,12 +605,14 @@ export default function GestionEmploisDuTempsPage() {
               )}
               <div className="flex items-center gap-2 ml-auto">
                 <button
+                  type="button"
                   onClick={() => setSelectedSlot(null)}
                   className="px-4 py-2 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
                 >
                   Annuler
                 </button>
                 <button
+                  type="button"
                   onClick={handleSaveCours}
                   className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium"
                 >

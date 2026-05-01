@@ -1,12 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BookOpen, Edit, Plus, Trash2 } from "lucide-react";
 import AddMatiereModal from "@/components/AddMatiereModal";
+import FlashNotice from "@/components/FlashNotice";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
 import Modal from "@/components/Modal";
 import CoefficientGrilleReferencePanel from "@/components/CoefficientGrilleReferencePanel";
 import {
+  inferCycleFromNiveau,
   niveauxPourFiltreCycle,
   NIVEAUX_PRIMAIRE_CI as NIVEAUX_PRIMAIRE,
   NIVEAUX_SECONDAIRE_CI as NIVEAUX_SECONDAIRE,
@@ -16,13 +19,19 @@ import type {
   NiveauCoeffReference,
   SerieBacReference,
 } from "@/lib/coefficients-grille-reference";
-import { loadCoeffGrilleFromStorage, saveCoeffGrilleToStorage } from "@/lib/coefficients-grille-reference";
+import { createClient } from "@/lib/supabase/client";
+import {
+  fetchPrimaryEtablissement,
+  loadCoeffGrilleFromSettings,
+  mergeEtablissementSettings,
+} from "@/lib/supabase/etablissement-settings";
+import { fetchDistinctActiveClassNiveaux } from "@/lib/supabase/fetch-class-niveaux";
 
 type CycleMatiere = "Primaire" | "Secondaire" | "Les_deux";
 type NiveauCoefficient = (typeof NIVEAUX_PRIMAIRE)[number] | (typeof NIVEAUX_SECONDAIRE)[number];
 
-type MatiereItem = {
-  id: number;
+export type MatiereItem = {
+  id: string;
   nom: string;
   coefficient: number;
   coefficientMode?: "unique" | "par_cycle" | "par_niveau";
@@ -37,41 +46,27 @@ type MatiereItem = {
 
 const ALL_NIVEAUX = [...NIVEAUX_PRIMAIRE, ...NIVEAUX_SECONDAIRE];
 
-const DEFAULT_MATIERES: MatiereItem[] = [
-  { id: 1, nom: "Français", coefficient: 3, couleur: "#00aef0", cycle: "Les_deux", niveaux: ALL_NIVEAUX, active: true },
-  {
-    id: 2,
-    nom: "Mathématiques",
-    coefficient: 3,
-    couleur: "#10a7aa",
+function mapRowToMatiere(r: {
+  id: string;
+  nom: string;
+  coefficient: number | string;
+  couleur: string | null;
+  is_active?: boolean | null;
+}): MatiereItem {
+  return {
+    id: r.id,
+    nom: r.nom as string,
+    coefficient: Number(r.coefficient),
+    couleur: (r.couleur as string) || "#6b7280",
     cycle: "Les_deux",
     niveaux: ALL_NIVEAUX,
-    active: true,
-  },
-  {
-    id: 3,
-    nom: "Histoire-Géo",
-    coefficient: 2,
-    couleur: "#f59e0b",
-    cycle: "Secondaire",
-    niveaux: [...NIVEAUX_SECONDAIRE],
-    active: true,
-  },
-  { id: 4, nom: "Sciences", coefficient: 2, couleur: "#10b981", cycle: "Les_deux", niveaux: ALL_NIVEAUX, active: true },
-  {
-    id: 5,
-    nom: "Anglais",
-    coefficient: 2,
-    couleur: "#8b5cf6",
-    cycle: "Secondaire",
-    niveaux: [...NIVEAUX_SECONDAIRE],
-    active: true,
-  },
-  { id: 6, nom: "EPS", coefficient: 1, couleur: "#ef4444", cycle: "Les_deux", niveaux: ALL_NIVEAUX, active: true },
-];
+    active: r.is_active !== false,
+  };
+}
 
 export default function MatieresCoefficientsSettingsPage() {
-  const [matieres, setMatieres] = useState<MatiereItem[]>(DEFAULT_MATIERES);
+  const [etablissementId, setEtablissementId] = useState<string | null>(null);
+  const [matieres, setMatieres] = useState<MatiereItem[]>([]);
   const [isAddMatiereOpen, setIsAddMatiereOpen] = useState(false);
   const [editingMatiere, setEditingMatiere] = useState<MatiereItem | null>(null);
   const [matiereCycleFilter, setMatiereCycleFilter] = useState<"all" | CycleMatiere>("all");
@@ -83,83 +78,184 @@ export default function MatieresCoefficientsSettingsPage() {
   const [coeffNiveauFilter, setCoeffNiveauFilter] = useState<"all" | NiveauCoeffReference>("all");
   const [coeffSerieFilter, setCoeffSerieFilter] = useState<"all" | SerieBacReference>("all");
   const [coeffSearch, setCoeffSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dbClassNiveaux, setDbClassNiveaux] = useState<string[]>([]);
+  const { notice, flash } = useFlashNotice();
+
+  const load = useCallback(async () => {
+    const supabase = createClient();
+    setLoading(true);
+    setError(null);
+    const { row: etab, error: e0 } = await fetchPrimaryEtablissement(supabase);
+    if (e0 || !etab) {
+      setError(e0 ?? "Établissement introuvable.");
+      setLoading(false);
+      return;
+    }
+    setEtablissementId(etab.id);
+    setCoeffGrilleRows(loadCoeffGrilleFromSettings(etab.settings));
+
+    const classNv = await fetchDistinctActiveClassNiveaux(supabase);
+    setDbClassNiveaux(classNv);
+
+    const { data: rows, error: e1 } = await supabase
+      .from("matieres")
+      .select("id, nom, coefficient, couleur, is_active")
+      .eq("etablissement_id", etab.id)
+      .order("nom");
+    if (e1) {
+      const { data: fallback, error: e2 } = await supabase
+        .from("matieres")
+        .select("id, nom, coefficient, couleur")
+        .eq("etablissement_id", etab.id)
+        .order("nom");
+      if (e2) {
+        setError(e2.message);
+        setLoading(false);
+        return;
+      }
+      setMatieres((fallback ?? []).map((r) => mapRowToMatiere({ ...r, is_active: true })));
+    } else {
+      setMatieres((rows ?? []).map((r) => mapRowToMatiere(r as Parameters<typeof mapRowToMatiere>[0])));
+    }
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
-    if (!isCoeffGrilleModalOpen) return;
-    setCoeffGrilleRows(loadCoeffGrilleFromStorage());
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (!isCoeffGrilleModalOpen || !etablissementId) return;
+    const supabase = createClient();
+    void (async () => {
+      const { row } = await fetchPrimaryEtablissement(supabase);
+      if (row) setCoeffGrilleRows(loadCoeffGrilleFromSettings(row.settings));
+    })();
     setCoeffCycleFilter("all");
     setCoeffNiveauFilter("all");
     setCoeffSerieFilter("all");
     setCoeffSearch("");
-  }, [isCoeffGrilleModalOpen]);
+  }, [isCoeffGrilleModalOpen, etablissementId]);
+
+  const persistCoeffRows = async (updated: CoefficientGrilleReferenceRow[]) => {
+    if (!etablissementId) return;
+    const supabase = createClient();
+    const { error: e } = await mergeEtablissementSettings(supabase, etablissementId, { coeffGrilleRows: updated });
+    if (e) setError(e);
+  };
 
   const handleUpdateCoeffGrilleRow = (id: number, next: number) => {
     setCoeffGrilleRows((rows) => {
       const updated = rows.map((r) => (r.id === id ? { ...r, coefficient: Math.max(1, Math.min(9, next || 1)) } : r));
-      saveCoeffGrilleToStorage(updated);
+      void persistCoeffRows(updated);
       return updated;
     });
   };
 
-  const handleAddMatiere = (newMatiere: Omit<MatiereItem, "id">) => {
+  const handleAddMatiere = async (newMatiere: Omit<MatiereItem, "id">) => {
+    if (!etablissementId) return;
     const nom = newMatiere.nom.trim();
-    if (!nom || newMatiere.niveaux.length === 0) {
-      alert("Veuillez renseigner la matiere et au moins un niveau.");
+    if (!nom) return;
+    const supabase = createClient();
+    const { data, error: e } = await supabase
+      .from("matieres")
+      .insert({
+        etablissement_id: etablissementId,
+        nom,
+        coefficient: newMatiere.coefficient,
+        couleur: newMatiere.couleur || "#6b7280",
+        is_active: newMatiere.active !== false,
+      })
+      .select("id, nom, coefficient, couleur, is_active")
+      .single();
+    if (e) {
+      flash(e.message, "error");
       return;
     }
-    const duplicate = matieres.some((m) => m.nom.toLowerCase() === nom.toLowerCase() && m.cycle === newMatiere.cycle);
-    if (duplicate) {
-      alert("Une matiere avec ce nom existe deja pour ce cycle.");
+    setMatieres((prev) => [...prev, mapRowToMatiere(data as Parameters<typeof mapRowToMatiere>[0])]);
+    flash("Matière ajoutée.", "success");
+  };
+
+  const handleAddMatieresBatch = async (batch: Omit<MatiereItem, "id">[]) => {
+    if (!etablissementId || batch.length === 0) return;
+    const supabase = createClient();
+    const inserts = batch.map((row) => ({
+      etablissement_id: etablissementId,
+      nom: row.nom.trim(),
+      coefficient: row.coefficient,
+      couleur: row.couleur || "#6b7280",
+      is_active: row.active !== false,
+    }));
+    const { data, error: e } = await supabase.from("matieres").insert(inserts).select("id, nom, coefficient, couleur, is_active");
+    if (e) {
+      flash(e.message, "error");
       return;
     }
-    const nextId = matieres.reduce((max, m) => Math.max(max, m.id), 0) + 1;
-    setMatieres([...matieres, { ...newMatiere, nom, id: nextId }]);
+    setMatieres((prev) => [...prev, ...(data ?? []).map((r) => mapRowToMatiere(r as Parameters<typeof mapRowToMatiere>[0]))]);
+    flash(`${data?.length ?? 0} matière(s) ajoutée(s).`, "success");
   };
 
-  const handleAddMatieresBatch = (rows: Omit<MatiereItem, "id">[]) => {
-    if (rows.length === 0) return;
-    let nextId = matieres.reduce((max, m) => Math.max(max, m.id), 0);
-    const merged = [...matieres];
-    let added = 0;
-    for (const row of rows) {
-      const nom = row.nom.trim();
-      if (!nom || row.niveaux.length === 0) continue;
-      const exists = merged.some((m) => m.nom.toLowerCase() === nom.toLowerCase() && m.cycle === row.cycle);
-      if (exists) continue;
-      nextId += 1;
-      merged.push({ ...row, nom, id: nextId });
-      added += 1;
-    }
-    setMatieres(merged);
-    alert(`${added} matiere(s) ajoutee(s).`);
-  };
-
-  const handleEditMatiere = (updatedMatiere: MatiereItem) => {
+  const handleEditMatiere = async (updatedMatiere: MatiereItem) => {
     const nom = updatedMatiere.nom.trim();
-    if (!nom || updatedMatiere.niveaux.length === 0) {
-      alert("Veuillez renseigner la matiere et au moins un niveau.");
+    if (!nom) return;
+    const supabase = createClient();
+    const { error: e } = await supabase
+      .from("matieres")
+      .update({
+        nom,
+        coefficient: updatedMatiere.coefficient,
+        couleur: updatedMatiere.couleur,
+        is_active: updatedMatiere.active !== false,
+      })
+      .eq("id", updatedMatiere.id);
+    if (e) {
+      flash(e.message, "error");
       return;
     }
-    setMatieres(matieres.map((m) => (m.id === updatedMatiere.id ? { ...updatedMatiere, nom } : m)));
+    setMatieres((prev) => prev.map((m) => (m.id === updatedMatiere.id ? { ...updatedMatiere, nom } : m)));
     setEditingMatiere(null);
+    flash("Matière mise à jour.", "success");
   };
 
-  const handleDeleteMatiere = (id: number) => {
-    if (confirm("Etes-vous sur de vouloir supprimer cette matiere ?")) {
-      setMatieres(matieres.filter((m) => m.id !== id));
+  const handleDeleteMatiere = async (id: string) => {
+    if (!confirm("Etes-vous sur de vouloir supprimer cette matiere ?")) return;
+    const supabase = createClient();
+    const { error: e } = await supabase.from("matieres").delete().eq("id", id);
+    if (e) {
+      flash(e.message, "error");
+      return;
     }
+    setMatieres((prev) => prev.filter((m) => m.id !== id));
+    flash("Matière supprimée.", "success");
   };
 
-  const handleToggleMatiereActive = (id: number) => {
-    setMatieres(matieres.map((m) => (m.id === id ? { ...m, active: !m.active } : m)));
+  const handleToggleMatiereActive = async (id: string) => {
+    const m = matieres.find((x) => x.id === id);
+    if (!m) return;
+    const next = !m.active;
+    const supabase = createClient();
+    const { error: e } = await supabase.from("matieres").update({ is_active: next }).eq("id", id);
+    if (e) {
+      flash(e.message, "error");
+      return;
+    }
+    setMatieres((prev) => prev.map((x) => (x.id === id ? { ...x, active: next } : x)));
   };
 
-  const niveauxDisponiblesFiltreMatieres =
-    matiereCycleFilter === "all"
-      ? niveauxPourFiltreCycle("Les_deux")
-      : matiereCycleFilter === "Les_deux"
-      ? niveauxPourFiltreCycle("Les_deux")
-      : niveauxPourFiltreCycle(matiereCycleFilter);
+  const niveauxDisponiblesFiltreMatieres = useMemo(() => {
+    const fallback =
+      matiereCycleFilter === "all" || matiereCycleFilter === "Les_deux"
+        ? niveauxPourFiltreCycle("Les_deux")
+        : niveauxPourFiltreCycle(matiereCycleFilter);
+    if (!dbClassNiveaux.length) return fallback;
+    const filt =
+      matiereCycleFilter === "all" || matiereCycleFilter === "Les_deux"
+        ? dbClassNiveaux
+        : dbClassNiveaux.filter((n) => inferCycleFromNiveau(n) === matiereCycleFilter);
+    return filt.length ? filt : fallback;
+  }, [dbClassNiveaux, matiereCycleFilter]);
 
   const matieresFiltrees = matieres
     .filter((matiere) => {
@@ -172,6 +268,7 @@ export default function MatieresCoefficientsSettingsPage() {
 
   return (
     <div className="space-y-6">
+      <FlashNotice payload={notice} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <Link href="/dashboard/settings" className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
@@ -179,9 +276,13 @@ export default function MatieresCoefficientsSettingsPage() {
             Retour aux parametres
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-foreground">Matieres & Coefficients</h1>
-          <p className="text-muted-foreground">Gestion dediee des matieres par cycle et niveaux.</p>
+          <p className="text-muted-foreground">Table `matieres` (coefficient, couleur, actif)</p>
         </div>
       </div>
+
+      {error ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+      ) : null}
 
       <div className="bg-card border border-border rounded-xl p-6">
         <div className="flex items-center justify-between mb-4">
@@ -191,7 +292,8 @@ export default function MatieresCoefficientsSettingsPage() {
               Matieres
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Gestion par cycle et niveaux pour les ecoles primaire/secondaire mixtes.
+              Les champs cycle / niveaux détaillés du formulaire servent à la saisie ; seuls nom, coefficient et couleur
+              sont persistés en base sur ce schéma.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -199,8 +301,10 @@ export default function MatieresCoefficientsSettingsPage() {
               Grille officielle
             </button>
             <button
+              type="button"
+              disabled={loading || !etablissementId}
               onClick={() => setIsAddMatiereOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20"
+              className="flex items-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20 disabled:opacity-50"
             >
               <Plus className="w-4 h-4" />
               Ajouter
@@ -244,56 +348,60 @@ export default function MatieresCoefficientsSettingsPage() {
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full">
-            <thead className="bg-muted/40">
-              <tr>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Matiere</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Cycle</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Niveaux concernes</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Coefficient</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Statut</th>
-                <th className="text-right px-4 py-3 text-sm font-semibold text-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {matieresFiltrees.map((matiere) => (
-                <tr key={matiere.id} className="border-t border-border">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-block h-3.5 w-3.5 rounded-full" style={{ backgroundColor: matiere.couleur }}></span>
-                      <span className="font-medium text-foreground">{matiere.nom}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-foreground">{matiere.cycle === "Les_deux" ? "Les deux" : matiere.cycle}</td>
-                  <td className="px-4 py-3 text-sm text-muted-foreground">
-                    {matiere.niveaux.length > 3 ? `${matiere.niveaux.slice(0, 3).join(", ")} +${matiere.niveaux.length - 3}` : matiere.niveaux.join(", ")}
-                  </td>
-                  <td className="px-4 py-3 text-sm font-semibold text-foreground">{matiere.coefficient}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <button
-                      type="button"
-                      onClick={() => handleToggleMatiereActive(matiere.id)}
-                      className={`rounded-md px-2 py-1 text-xs font-medium ${
-                        matiere.active ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
-                      }`}
-                    >
-                      {matiere.active ? "Actif" : "Inactif"}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <button onClick={() => setEditingMatiere(matiere)} className="p-2 hover:bg-accent rounded-lg transition">
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleDeleteMatiere(matiere.id)} className="p-2 hover:bg-accent rounded-lg transition">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+          {loading ? (
+            <p className="p-6 text-muted-foreground">Chargement…</p>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-muted/40">
+                <tr>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Matiere</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Cycle</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Niveaux concernes</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Coefficient</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">Statut</th>
+                  <th className="text-right px-4 py-3 text-sm font-semibold text-foreground">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {matieresFiltrees.map((matiere) => (
+                  <tr key={matiere.id} className="border-t border-border">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-block h-3.5 w-3.5 rounded-full" style={{ backgroundColor: matiere.couleur }} />
+                        <span className="font-medium text-foreground">{matiere.nom}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-foreground">{matiere.cycle === "Les_deux" ? "Les deux" : matiere.cycle}</td>
+                    <td className="px-4 py-3 text-sm text-muted-foreground">
+                      {matiere.niveaux.length > 3 ? `${matiere.niveaux.slice(0, 3).join(", ")} +${matiere.niveaux.length - 3}` : matiere.niveaux.join(", ")}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-foreground">{matiere.coefficient}</td>
+                    <td className="px-4 py-3 text-sm">
+                      <button
+                        type="button"
+                        onClick={() => void handleToggleMatiereActive(matiere.id)}
+                        className={`rounded-md px-2 py-1 text-xs font-medium ${
+                          matiere.active ? "bg-success/10 text-success" : "bg-danger/10 text-danger"
+                        }`}
+                      >
+                        {matiere.active ? "Actif" : "Inactif"}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button type="button" onClick={() => setEditingMatiere(matiere)} className="p-2 hover:bg-accent rounded-lg transition">
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={() => void handleDeleteMatiere(matiere.id)} className="p-2 hover:bg-accent rounded-lg transition">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -326,21 +434,22 @@ export default function MatieresCoefficientsSettingsPage() {
       <AddMatiereModal
         isOpen={isAddMatiereOpen}
         onClose={() => setIsAddMatiereOpen(false)}
-        onSubmit={handleAddMatiere}
-        onSubmitBatch={handleAddMatieresBatch}
+        onSubmit={(d) => void handleAddMatiere(d as Omit<MatiereItem, "id">)}
+        onSubmitBatch={(rows) => void handleAddMatieresBatch(rows as Omit<MatiereItem, "id">[])}
         existingMatieres={matieres.map((m) => ({ nom: m.nom, cycle: m.cycle }))}
+        classNiveauxFromDb={dbClassNiveaux}
       />
 
       {editingMatiere && (
         <AddMatiereModal
           isOpen={!!editingMatiere}
           onClose={() => setEditingMatiere(null)}
-          onSubmit={handleEditMatiere}
+          onSubmit={(d) => void handleEditMatiere(d as MatiereItem)}
           matiere={editingMatiere}
           existingMatieres={matieres.map((m) => ({ nom: m.nom, cycle: m.cycle }))}
+          classNiveauxFromDb={dbClassNiveaux}
         />
       )}
     </div>
   );
 }
-

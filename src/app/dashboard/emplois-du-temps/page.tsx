@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Filter, Download, Edit, Clock } from "lucide-react";
 import { exportScheduleToPDF } from "@/utils/pdfExport";
@@ -9,66 +9,19 @@ import {
   DEFAULT_TIMETABLE_TECH_CONFIG,
   generateTimeSlots,
   getDisabledSlotIdsByDay,
-  loadTimetableTechConfigFromStorage,
   type TimetableTechConfig,
 } from "@/lib/timetable-tech-config";
-
-// Données de démonstration
-const classesData = [
-  { id: 1, name: "CP - Classe A", niveau: "CP" },
-  { id: 2, name: "CE1 - Classe A", niveau: "CE1" },
-  { id: 3, name: "CE2 - Classe A", niveau: "CE2" },
-  { id: 4, name: "CM1 - Classe A", niveau: "CM1" },
-  { id: 5, name: "CM2 - Classe A", niveau: "CM2" },
-  { id: 6, name: "6ème - Classe A", niveau: "6ème" },
-];
-
-// Emploi du temps de démonstration pour CP - Classe A
-const emploiDuTempsDemo: Record<string, Record<number, { matiere: string; prof: string; salle: string }>> = {
-  Lundi: {
-    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    5: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
-    7: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-    9: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-  },
-  Mardi: {
-    1: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
-    5: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    7: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
-    9: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
-  },
-  Mercredi: {
-    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Musique", prof: "M. Pierre", salle: "Salle Musique" },
-    5: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-  },
-  Jeudi: {
-    1: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    5: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
-    7: { matiere: "Anglais", prof: "Mme Sophie", salle: "Salle 101" },
-    9: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-  },
-  Vendredi: {
-    1: { matiere: "Français", prof: "Mme Dupont", salle: "Salle 101" },
-    2: { matiere: "Mathématiques", prof: "Mme Dupont", salle: "Salle 101" },
-    4: { matiere: "Sciences", prof: "M. Bernard", salle: "Labo" },
-    5: { matiere: "Histoire-Géo", prof: "M. Martin", salle: "Salle 101" },
-    7: { matiere: "EPS", prof: "M. Laurent", salle: "Gymnase" },
-    9: { matiere: "Arts plastiques", prof: "Mme Claire", salle: "Salle Arts" },
-  },
-};
+import FlashNotice from "@/components/FlashNotice";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { createClient } from "@/lib/supabase/client";
+import { fetchTimetableTechConfig } from "@/lib/supabase/etablissement-settings";
+import { buildTimetableGridFromRows, type TimetableGrid } from "@/lib/timetable-db-map";
 
 const matiereColors: Record<string, string> = {
   Français: "bg-blue-100 text-blue-700 border-blue-300",
   Mathématiques: "bg-purple-100 text-purple-700 border-purple-300",
   Sciences: "bg-green-100 text-green-700 border-green-300",
+  "Histoire-Géographie": "bg-orange-100 text-orange-700 border-orange-300",
   "Histoire-Géo": "bg-orange-100 text-orange-700 border-orange-300",
   Anglais: "bg-pink-100 text-pink-700 border-pink-300",
   EPS: "bg-red-100 text-red-700 border-red-300",
@@ -81,19 +34,118 @@ function toMinutes(hhmm: string): number {
   return h * 60 + m;
 }
 
+type ClasseOption = { id: string; name: string };
+
 export default function EmploisDuTempsPage() {
   const router = useRouter();
-  const [selectedClass, setSelectedClass] = useState("CP - Classe A");
+  const [classes, setClasses] = useState<ClasseOption[]>([]);
+  const [selectedClasseId, setSelectedClasseId] = useState("");
   const [techConfig, setTechConfig] = useState<TimetableTechConfig>(DEFAULT_TIMETABLE_TECH_CONFIG);
-  const isDemoClass = selectedClass === "CP - Classe A";
-  const emploiDuTemps = isDemoClass ? emploiDuTempsDemo : {};
+  const [emploiDuTemps, setEmploiDuTemps] = useState<TimetableGrid>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { notice, flash } = useFlashNotice();
+
+  const selectedClassName = useMemo(
+    () => classes.find((c) => c.id === selectedClasseId)?.name ?? "",
+    [classes, selectedClasseId]
+  );
+
   const jours = techConfig.activeDays.length > 0 ? techConfig.activeDays : [...DAY_NAMES];
   const creneaux = useMemo(() => generateTimeSlots(techConfig), [techConfig]);
   const disabledSlotsByDay = useMemo(() => getDisabledSlotIdsByDay(techConfig, creneaux), [techConfig, creneaux]);
 
-  useEffect(() => {
-    setTechConfig(loadTimetableTechConfigFromStorage());
+  const loadClasses = useCallback(async () => {
+    const supabase = createClient();
+    const { data, error: e } = await supabase
+      .from("classes")
+      .select("id, name")
+      .eq("status", "active")
+      .order("niveau");
+    if (e) throw e;
+    const opts = (data ?? []).map((r) => ({ id: r.id as string, name: r.name as string }));
+    setClasses(opts);
+    setSelectedClasseId((prev) => prev || opts[0]?.id || "");
   }, []);
+
+  const loadEdt = useCallback(
+    async (classeId: string) => {
+      if (!classeId) {
+        setEmploiDuTemps({});
+        return;
+      }
+      const supabase = createClient();
+      const { data: rows, error: e1 } = await supabase
+        .from("emplois_du_temps")
+        .select(
+          `
+          jour, heure_debut, heure_fin, enseignant_id,
+          matieres ( id, nom )
+        `
+        )
+        .eq("classe_id", classeId);
+      if (e1) throw e1;
+      const uids = [...new Set((rows ?? []).map((r) => r.enseignant_id as string | null).filter(Boolean))] as string[];
+      const profMap = new Map<string, string>();
+      if (uids.length) {
+        const { data: profs, error: e2 } = await supabase
+          .from("profiles")
+          .select("id, first_name, last_name")
+          .in("id", uids);
+        if (e2) throw e2;
+        for (const p of profs ?? []) {
+          profMap.set(p.id as string, `${p.first_name} ${p.last_name}`.trim());
+        }
+      }
+      setEmploiDuTemps(buildTimetableGridFromRows(rows ?? [], creneaux, profMap));
+    },
+    [creneaux]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const supabase = createClient();
+      const cfg = await fetchTimetableTechConfig(supabase);
+      if (!cancelled) setTechConfig(cfg);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        await loadClasses();
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Erreur");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadClasses]);
+
+  useEffect(() => {
+    if (!selectedClasseId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await loadEdt(selectedClasseId);
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Erreur EDT");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClasseId, loadEdt]);
 
   const totalWeeklyHours = useMemo(() => {
     const totalMinutes = jours.reduce((acc, day) => {
@@ -105,48 +157,73 @@ export default function EmploisDuTempsPage() {
     return `${(totalMinutes / 60).toFixed(1)}h`;
   }, [jours, creneaux, disabledSlotsByDay]);
 
+  const recapMatieres = useMemo(() => {
+    const minutesByMatiere = new Map<string, number>();
+    for (const jour of jours) {
+      const bySlot = emploiDuTemps[jour] ?? {};
+      for (const slot of creneaux) {
+        if (slot.type !== "course") continue;
+        const c = bySlot[slot.id];
+        if (!c?.matiere) continue;
+        const mins = toMinutes(slot.fin) - toMinutes(slot.debut);
+        minutesByMatiere.set(c.matiere, (minutesByMatiere.get(c.matiere) ?? 0) + mins);
+      }
+    }
+    return [...minutesByMatiere.entries()]
+      .map(([nom, min]) => ({ nom, heures: (min / 60).toFixed(1) }))
+      .sort((a, b) => a.nom.localeCompare(b.nom));
+  }, [emploiDuTemps, jours, creneaux]);
+
+  const distinctCounts = useMemo(() => {
+    const matSet = new Set<string>();
+    const profSet = new Set<string>();
+    for (const jour of jours) {
+      const bySlot = emploiDuTemps[jour] ?? {};
+      for (const c of Object.values(bySlot)) {
+        if (c.matiere) matSet.add(c.matiere);
+        if (c.prof) profSet.add(c.prof);
+      }
+    }
+    return { matieres: matSet.size, enseignants: profSet.size };
+  }, [emploiDuTemps, jours]);
+
   const handleExport = async () => {
     try {
-      await exportScheduleToPDF(selectedClass);
-    } catch (error) {
-      console.error("Erreur lors de l'export PDF:", error);
-      alert("Erreur lors de l'export PDF");
+      await exportScheduleToPDF(selectedClassName || "Classe");
+    } catch (e) {
+      console.error(e);
+      flash("Erreur export PDF.", "error");
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      <FlashNotice payload={notice} />
       <div>
         <h1 className="text-2xl font-bold text-foreground">Emplois du temps</h1>
-        <p className="text-muted-foreground">Consultation et gestion des emplois du temps</p>
+        <p className="text-muted-foreground">Lecture Supabase (emplois_du_temps) — horaires : Paramètres</p>
       </div>
 
-      <div className="bg-warning/10 border border-warning/20 rounded-xl p-4">
-        <p className="text-sm font-medium text-foreground">Brouillon (MVP)</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Version de démonstration. La classe CP - Classe A contient un exemple prérempli.
-          Les horaires techniques sont configurables depuis Paramètres.
-        </p>
-      </div>
+      {error ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+      ) : null}
 
-      {/* Filtres */}
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-end gap-4">
-          {/* Classe */}
-          <div className="flex-1">
+        <div className="flex items-end gap-4 flex-wrap">
+          <div className="flex-1 min-w-[200px]">
             <label className="block text-sm font-medium text-foreground mb-2">
               Classe <span className="text-danger">*</span>
             </label>
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
+                value={selectedClasseId}
+                onChange={(e) => setSelectedClasseId(e.target.value)}
+                disabled={loading}
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
               >
-                {classesData.map((classe) => (
-                  <option key={classe.id} value={classe.name}>
+                {classes.map((classe) => (
+                  <option key={classe.id} value={classe.id}>
                     {classe.name}
                   </option>
                 ))}
@@ -154,16 +231,17 @@ export default function EmploisDuTempsPage() {
             </div>
           </div>
 
-          {/* Actions */}
           <button
+            type="button"
             onClick={() => router.push("/dashboard/emplois-du-temps/gestion")}
             className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
           >
             <Edit className="w-4 h-4" />
-            Gérer l'emploi du temps
+            Gérer l&apos;emploi du temps
           </button>
           <button
-            onClick={handleExport}
+            type="button"
+            onClick={() => void handleExport()}
             className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm"
           >
             <Download className="w-4 h-4" />
@@ -172,35 +250,31 @@ export default function EmploisDuTempsPage() {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Heures/semaine</p>
+          <p className="text-sm text-muted-foreground">Heures/semaine (grille)</p>
           <p className="text-2xl font-bold text-foreground mt-1">{totalWeeklyHours}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Matières</p>
-          <p className="text-2xl font-bold text-foreground mt-1">8</p>
+          <p className="text-sm text-muted-foreground">Matières (cases)</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{distinctCounts.matieres}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Enseignants</p>
-          <p className="text-2xl font-bold text-foreground mt-1">6</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{distinctCounts.enseignants}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Salles</p>
-          <p className="text-2xl font-bold text-foreground mt-1">4</p>
+          <p className="text-2xl font-bold text-muted-foreground mt-1">—</p>
         </div>
       </div>
 
-      {/* Grille emploi du temps */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-foreground">
-            Emploi du temps - {selectedClass}
-          </h3>
+          <h3 className="text-lg font-semibold text-foreground">Emploi du temps - {selectedClassName}</h3>
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Année scolaire 2024-2025</span>
+            <span className="text-sm text-muted-foreground">Créneaux techniques locaux</span>
           </div>
         </div>
 
@@ -208,9 +282,7 @@ export default function EmploisDuTempsPage() {
           <table id="schedule-table" className="w-full min-w-max">
             <thead>
               <tr className="bg-muted/50 border-b border-border">
-                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground min-w-[100px]">
-                  Horaires
-                </th>
+                <th className="text-left px-4 py-3 text-sm font-semibold text-foreground min-w-[100px]">Horaires</th>
                 {jours.map((jour) => (
                   <th key={jour} className="text-center px-4 py-3 text-sm font-semibold text-foreground min-w-[180px]">
                     {jour}
@@ -255,9 +327,7 @@ export default function EmploisDuTempsPage() {
                             <p className="text-xs opacity-70 mt-0.5">{cours.salle}</p>
                           </div>
                         ) : (
-                          <div className="h-full flex items-center justify-center text-muted-foreground text-xs">
-                            -
-                          </div>
+                          <div className="h-full flex items-center justify-center text-muted-foreground text-xs">-</div>
                         )}
                       </td>
                     );
@@ -268,65 +338,20 @@ export default function EmploisDuTempsPage() {
           </table>
         </div>
 
-        {/* Légende */}
         <div className="px-6 py-4 border-t border-border bg-muted/30">
-          <p className="text-sm font-medium text-foreground mb-3">Légende des matières :</p>
-          <div className="flex flex-wrap gap-3">
-            {Object.entries(matiereColors).map(([matiere, colorClass]) => (
-              <div key={matiere} className="flex items-center gap-2">
-                <div className={`w-4 h-4 rounded ${colorClass} border-2`}></div>
-                <span className="text-sm text-foreground">{matiere}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Info */}
-        <div className="px-6 py-4 border-t border-border">
-          <div className="flex items-start gap-3 p-3 bg-info/10 border border-info/20 rounded-lg">
-            <div className="w-5 h-5 bg-info/20 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="text-info text-xs">ℹ</span>
+          <p className="text-sm font-medium text-foreground mb-3">Récapitulatif (heures saisies / semaine)</p>
+          {recapMatieres.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Aucun cours sur cette grille pour cette classe.</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {recapMatieres.map((r) => (
+                <div key={r.nom} className="p-3 bg-white border border-border rounded-lg">
+                  <p className="text-sm font-medium text-foreground">{r.nom}</p>
+                  <p className="text-lg font-bold text-primary mt-1">{r.heures} h</p>
+                </div>
+              ))}
             </div>
-            <div>
-              <p className="text-sm font-medium text-foreground">Information</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Les pauses et récréations sont verrouillées visuellement dans la grille.
-                Les emplois du temps restent modifiables via le module de gestion.
-                Toute modification sera visible instantanément pour tous les utilisateurs.
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Récapitulatif hebdomadaire */}
-      <div className="bg-card border border-border rounded-xl p-6">
-        <h3 className="text-lg font-semibold text-foreground mb-4">Récapitulatif par matière</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm text-blue-700 font-medium">Français</p>
-            <p className="text-2xl font-bold text-blue-900 mt-1">8h/semaine</p>
-          </div>
-          <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
-            <p className="text-sm text-purple-700 font-medium">Mathématiques</p>
-            <p className="text-2xl font-bold text-purple-900 mt-1">7h/semaine</p>
-          </div>
-          <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
-            <p className="text-sm text-green-700 font-medium">Sciences</p>
-            <p className="text-2xl font-bold text-green-900 mt-1">3h/semaine</p>
-          </div>
-          <div className="p-4 bg-orange-50 border border-orange-200 rounded-lg">
-            <p className="text-sm text-orange-700 font-medium">Histoire-Géo</p>
-            <p className="text-2xl font-bold text-orange-900 mt-1">2h/semaine</p>
-          </div>
-          <div className="p-4 bg-pink-50 border border-pink-200 rounded-lg">
-            <p className="text-sm text-pink-700 font-medium">Anglais</p>
-            <p className="text-2xl font-bold text-pink-900 mt-1">2h/semaine</p>
-          </div>
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-sm text-red-700 font-medium">EPS</p>
-            <p className="text-2xl font-bold text-red-900 mt-1">3h/semaine</p>
-          </div>
+          )}
         </div>
       </div>
     </div>

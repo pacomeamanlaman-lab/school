@@ -1,5 +1,3 @@
-export const COEFF_GRILLE_REFERENCE_STORAGE_KEY = "school_coeff_grille_reference_mvp";
-
 export type NiveauCoeffReference =
   | "CP1"
   | "CP2"
@@ -172,24 +170,4 @@ export function normalizeCoeffGrilleRows(parsed: unknown): CoefficientGrilleRefe
 
   if (rows.length === 0) return COEFFICIENTS_GRILLE_REFERENCE_DEFAULT;
   return rows;
-}
-
-export function loadCoeffGrilleFromStorage(): CoefficientGrilleReferenceRow[] {
-  if (typeof window === "undefined") return COEFFICIENTS_GRILLE_REFERENCE_DEFAULT;
-  try {
-    const raw = localStorage.getItem(COEFF_GRILLE_REFERENCE_STORAGE_KEY);
-    if (!raw) return COEFFICIENTS_GRILLE_REFERENCE_DEFAULT;
-    return normalizeCoeffGrilleRows(JSON.parse(raw));
-  } catch {
-    return COEFFICIENTS_GRILLE_REFERENCE_DEFAULT;
-  }
-}
-
-export function saveCoeffGrilleToStorage(rows: CoefficientGrilleReferenceRow[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(COEFF_GRILLE_REFERENCE_STORAGE_KEY, JSON.stringify(rows));
-  } catch {
-    // ignore
-  }
 }

@@ -4,17 +4,29 @@ import { useState, useEffect } from "react";
 import Modal from "./Modal";
 import { Coins, Calendar, CreditCard, FileText } from "lucide-react";
 
+export type PaiementSubmitPayload = {
+  fraisScolaireId: string;
+  studentId: string;
+  studentName: string;
+  montant: string;
+  datePaiement: string;
+  modePaiement: string;
+  numeroRecu?: string;
+  remarques?: string;
+};
+
 interface AddPaiementModalProps {
   isOpen: boolean;
   onClose: () => void;
   student: {
-    studentId: number;
+    fraisScolaireId: string;
+    studentId: string;
     studentName: string;
     classe: string;
     montantTotal: number;
     montantPaye: number;
   } | null;
-  onSubmit?: (data: any) => void;
+  onSubmit?: (data: PaiementSubmitPayload) => void | Promise<void>;
 }
 
 const emptyForm = () => ({
@@ -35,18 +47,20 @@ export default function AddPaiementModal({ isOpen, onClose, student, onSubmit }:
     setFormData(emptyForm());
   }, [isOpen, student?.studentId]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (onSubmit && student) {
-      onSubmit({
-        studentId: student.studentId,
-        studentName: student.studentName,
-        ...formData,
-      });
+      await Promise.resolve(
+        onSubmit({
+          fraisScolaireId: student.fraisScolaireId,
+          studentId: student.studentId,
+          studentName: student.studentName,
+          ...formData,
+        })
+      );
     }
     setSolderComplet(false);
     setFormData(emptyForm());
-    onClose();
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -190,7 +204,7 @@ export default function AddPaiementModal({ isOpen, onClose, student, onSubmit }:
                 <option value="especes">Espèces</option>
                 <option value="cheque">Chèque</option>
                 <option value="virement">Virement bancaire</option>
-                <option value="mobile">Mobile Money</option>
+                <option value="mobile_money">Mobile Money</option>
               </select>
             </div>
           </div>

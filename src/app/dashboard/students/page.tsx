@@ -1,158 +1,396 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Search, Filter, MoreVertical, Eye, Edit, Trash2, Download, FileSpreadsheet } from "lucide-react";
+import { Plus, Search, Filter, Eye, Edit, Trash2, FileSpreadsheet } from "lucide-react";
 import AddStudentModal from "@/components/AddStudentModal";
+import FlashNotice from "@/components/FlashNotice";
 import { exportStudentsToExcel } from "@/utils/excelExport";
-import { getMontantParClasse } from "@/lib/frais-scolaires";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useStudents, type StudentWithClass } from "@/hooks/useStudents";
+import { createClient } from "@/lib/supabase/client";
+import {
+  STUDENT_DOC_TYPE_BIRTH,
+  uploadStudentDocumentsBatch,
+  uploadStudentProfilePhoto,
+} from "@/lib/supabase/student-documents";
+import type { Database } from "@/lib/supabase/types";
 
-// Données de démonstration
-const studentsData = [
-  {
-    id: 1,
-    matricule: "EL2024001",
-    firstName: "Marie",
-    lastName: "Dupont",
-    classe: "CM2",
-    dateNaissance: "2014-03-15",
-    genre: "F",
-    status: "active",
-    groupeSanguin: "A+",
-    maladiesParticulieres: "Asthme léger",
-    pieceNaissance: "2014/03/CM2/001",
-    parentPhoneSecondaire: "+33 6 23 45 67 89",
-  },
-  {
-    id: 2,
-    matricule: "EL2024002",
-    firstName: "Jean",
-    lastName: "Martin",
-    classe: "CE1",
-    dateNaissance: "2016-07-22",
-    genre: "M",
-    status: "active",
-    groupeSanguin: "O+",
-    maladiesParticulieres: "",
-    pieceNaissance: "2016/07/CE1/002",
-    parentPhoneSecondaire: "",
-  },
-  {
-    id: 3,
-    matricule: "EL2024003",
-    firstName: "Sophie",
-    lastName: "Bernard",
-    classe: "6ème",
-    dateNaissance: "2013-11-08",
-    genre: "F",
-    status: "active",
-    groupeSanguin: "B+",
-    maladiesParticulieres: "Allergie aux arachides",
-    pieceNaissance: "2013/11/6EME/003",
-    parentPhoneSecondaire: "+33 6 45 67 89 01",
-  },
-  {
-    id: 4,
-    matricule: "EL2024004",
-    firstName: "Lucas",
-    lastName: "Petit",
-    classe: "CM1",
-    dateNaissance: "2014-05-19",
-    genre: "M",
-    status: "active",
-    groupeSanguin: "AB+",
-    maladiesParticulieres: "",
-    pieceNaissance: "2014/05/CM1/004",
-    parentPhoneSecondaire: "+33 6 78 90 12 34",
-  },
-  {
-    id: 5,
-    matricule: "EL2024005",
-    firstName: "Emma",
-    lastName: "Dubois",
-    classe: "CP",
-    dateNaissance: "2017-09-12",
-    genre: "F",
-    status: "active",
-    groupeSanguin: "O-",
-    maladiesParticulieres: "Diabète type 1",
-    pieceNaissance: "2017/09/CP/005",
-    parentPhoneSecondaire: "",
-  },
+type GroupeSanguin = NonNullable<
+  Database["public"]["Tables"]["students"]["Row"]["groupe_sanguin"]
+>;
+
+const BLOOD: readonly GroupeSanguin[] = [
+  "A+",
+  "A-",
+  "B+",
+  "B-",
+  "AB+",
+  "AB-",
+  "O+",
+  "O-",
 ];
+
+/** Fichiers pièces jointes (ancien payload sans type). */
+function birthCertificateFilesFromPayload(p: Record<string, unknown>): File[] {
+  const multi = p.birthCertificateFiles;
+  if (Array.isArray(multi)) {
+    return multi.filter((x): x is File => x instanceof File);
+  }
+  const single = p.birthCertificateFile;
+  if (single instanceof File) return [single];
+  return [];
+}
+
+function studentDocumentItemsFromPayload(p: Record<string, unknown>): { file: File; type_document: string }[] {
+  const raw = p.studentDocumentItems;
+  if (Array.isArray(raw)) {
+    const out: { file: File; type_document: string }[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const o = item as { file?: unknown; type_document?: unknown };
+      if (o.file instanceof File && typeof o.type_document === "string" && o.type_document.trim()) {
+        out.push({ file: o.file, type_document: o.type_document.trim() });
+      }
+    }
+    return out;
+  }
+  const legacy = birthCertificateFilesFromPayload(p);
+  return legacy.map((file) => ({ file, type_document: STUDENT_DOC_TYPE_BIRTH }));
+}
+
+function parseGroupeSanguin(raw: string): GroupeSanguin | null {
+  const t = raw.trim();
+  return BLOOD.includes(t as GroupeSanguin) ? (t as GroupeSanguin) : null;
+}
+
+function strOrNull(v: unknown): string | null {
+  const t = String(v ?? "").trim();
+  return t || null;
+}
+
+type ClasseOption = { id: string; name: string; niveau: string };
+
+type LinkedParentRow = {
+  nom: string;
+  telephone: string;
+  telephone_secondaire: string | null;
+  email: string | null;
+};
+
+function firstLinkedParent(s: StudentWithClass): LinkedParentRow | null {
+  const sps = s.student_parents ?? [];
+  for (const row of sps) {
+    const p = (row as { parents?: unknown }).parents;
+    if (p == null) continue;
+    const one = Array.isArray(p) ? (p[0] as LinkedParentRow | undefined) : (p as LinkedParentRow);
+    if (one?.nom && one?.telephone) return one;
+  }
+  return null;
+}
+
+/** Ligne UI (camelCase) pour le tableau et le modal */
+export type StudentListRow = {
+  id: string;
+  matricule: string;
+  firstName: string;
+  lastName: string;
+  classe: string;
+  /** `classes.id` Supabase — valeur du select « Classe » dans le modal */
+  classeId: string;
+  classeNiveau: string;
+  dateNaissance: string;
+  genre: "M" | "F";
+  status: string;
+  groupeSanguin: string;
+  maladiesParticulieres: string;
+  phone: string;
+  email: string;
+  adresse: string;
+  pieceNaissance: string;
+  lieuNaissance: string;
+  photoUrl: string;
+  parentName: string;
+  parentPhone: string;
+  parentPhoneSecondaire: string;
+  parentEmail: string;
+};
+
+function rowFromDb(s: StudentWithClass): StudentListRow {
+  const p = firstLinkedParent(s);
+  return {
+    id: s.id,
+    matricule: s.matricule,
+    firstName: s.first_name,
+    lastName: s.last_name,
+    classe: s.classes?.name ?? s.classes?.niveau ?? "—",
+    classeId: s.classe_id ?? s.classes?.id ?? "",
+    classeNiveau: s.classes?.niveau ?? "",
+    dateNaissance: s.date_naissance,
+    genre: s.genre,
+    status: s.status,
+    groupeSanguin: s.groupe_sanguin ?? "",
+    maladiesParticulieres: s.maladies_particulieres ?? "",
+    phone: s.phone ?? "",
+    email: s.email ?? "",
+    adresse: s.adresse ?? "",
+    pieceNaissance: s.piece_naissance ?? "",
+    lieuNaissance: s.lieu_naissance ?? "",
+    photoUrl: (s as { photo_url?: string | null }).photo_url ?? "",
+    parentName: p?.nom ?? "",
+    parentPhone: p?.telephone ?? "",
+    parentPhoneSecondaire: p?.telephone_secondaire ?? "",
+    parentEmail: p?.email ?? "",
+  };
+}
+
+async function insertParentAndLink(
+  supabase: ReturnType<typeof createClient>,
+  studentId: string,
+  form: Record<string, unknown>
+): Promise<{ error: string | null }> {
+  const nom = String(form.parentName ?? "").trim();
+  const telephone = String(form.parentPhone ?? "").trim();
+  if (!nom || !telephone) {
+    return { error: "Nom et téléphone du parent sont obligatoires." };
+  }
+  const adresse = strOrNull(form.adresse);
+  const { data: parentRow, error: pErr } = await supabase
+    .from("parents")
+    .insert({
+      nom,
+      telephone,
+      telephone_secondaire: strOrNull(form.parentPhoneSecondaire),
+      email: strOrNull(form.parentEmail),
+      adresse,
+      profession: null,
+    })
+    .select("id")
+    .single();
+  if (pErr || !parentRow?.id) return { error: pErr?.message ?? "Insertion parent impossible." };
+
+  const { error: spErr } = await supabase.from("student_parents").insert({
+    student_id: studentId,
+    parent_id: parentRow.id as string,
+    relation_type: "tuteur",
+  });
+  if (spErr) {
+    await supabase.from("parents").delete().eq("id", parentRow.id as string);
+    return { error: spErr.message };
+  }
+  return { error: null };
+}
+
+async function upsertParentForStudent(
+  supabase: ReturnType<typeof createClient>,
+  studentId: string,
+  form: Record<string, unknown>
+): Promise<{ error: string | null }> {
+  const nom = String(form.parentName ?? "").trim();
+  const telephone = String(form.parentPhone ?? "").trim();
+  if (!nom || !telephone) {
+    return { error: "Nom et téléphone du parent sont obligatoires." };
+  }
+  const adresse = strOrNull(form.adresse);
+  const sec = strOrNull(form.parentPhoneSecondaire);
+  const email = strOrNull(form.parentEmail);
+
+  const { data: link, error: lErr } = await supabase
+    .from("student_parents")
+    .select("parent_id")
+    .eq("student_id", studentId)
+    .limit(1)
+    .maybeSingle();
+  if (lErr) return { error: lErr.message };
+
+  if (link?.parent_id) {
+    const { error: uErr } = await supabase
+      .from("parents")
+      .update({
+        nom,
+        telephone,
+        telephone_secondaire: sec,
+        email,
+        adresse,
+      })
+      .eq("id", link.parent_id as string);
+    return { error: uErr?.message ?? null };
+  }
+
+  return insertParentAndLink(supabase, studentId, form);
+}
 
 export default function StudentsPage() {
   const router = useRouter();
+  const { students: dbStudents, loading, error, addStudent, updateStudent, deleteStudent, refresh } =
+    useStudents();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedClass, setSelectedClass] = useState("all");
-  const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [students, setStudents] = useState(studentsData);
-  const [editingStudent, setEditingStudent] = useState<typeof studentsData[0] | null>(null);
+  const [editingStudent, setEditingStudent] = useState<StudentListRow | null>(null);
+  const [classOptions, setClassOptions] = useState<ClasseOption[]>([]);
+  const [classesLoading, setClassesLoading] = useState(true);
+  const { notice, flash } = useFlashNotice();
 
-  const filteredStudents = students.filter((student) => {
-    const matchSearch =
-      student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      student.matricule.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchClass = selectedClass === "all" || student.classe === selectedClass;
-    return matchSearch && matchClass;
-  });
+  const rows = useMemo(() => dbStudents.map(rowFromDb), [dbStudents]);
 
-  const handleAddStudent = (newStudent: any) => {
-    const student = {
-      id: students.length + 1,
-      matricule: `EL2024${String(students.length + 1).padStart(3, '0')}`,
-      firstName: newStudent.firstName,
-      lastName: newStudent.lastName,
-      classe: newStudent.classe,
-      dateNaissance: newStudent.dateNaissance,
-      genre: newStudent.genre,
-      status: "active",
-      groupeSanguin: newStudent.groupeSanguin || "",
-      maladiesParticulieres: newStudent.maladiesParticulieres || "",
-      pieceNaissance: newStudent.pieceNaissance || "",
-      parentPhoneSecondaire: newStudent.parentPhoneSecondaire || "",
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setClassesLoading(true);
+      const supabase = createClient();
+      const { data, error: e } = await supabase
+        .from("classes")
+        .select("id, name, niveau")
+        .eq("status", "active")
+        .order("niveau")
+        .order("name");
+      if (cancelled) return;
+      if (e) {
+        setClassOptions([]);
+        setClassesLoading(false);
+        return;
+      }
+      setClassOptions(
+        (data ?? []).map((r) => ({
+          id: r.id as string,
+          name: r.name as string,
+          niveau: r.niveau as string,
+        }))
+      );
+      setClassesLoading(false);
+    })();
+    return () => {
+      cancelled = true;
     };
+  }, []);
 
-    setStudents([...students, student]);
+  const filteredStudents = useMemo(() => {
+    return rows.filter((student) => {
+      const matchSearch =
+        student.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        student.matricule.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchClass = selectedClass === "all" || student.classeId === selectedClass;
+      return matchSearch && matchClass;
+    });
+  }, [rows, searchTerm, selectedClass]);
 
-    // 🎯 DÉTECTION AUTOMATIQUE : Créer le dossier financier
-    const montantDetecte = getMontantParClasse(newStudent.classe);
-    const dossierFinancier = {
-      studentId: student.id,
-      studentName: `${newStudent.firstName} ${newStudent.lastName}`,
-      classe: newStudent.classe,
-      montantTotal: montantDetecte,
-      montantPaye: 0,
-      statutPaiement: "impaye",
-      dernierPaiement: null,
-    };
-
-    // Sauvegarder dans localStorage pour que Comptabilité le récupère
-    const existingFrais = JSON.parse(localStorage.getItem("school_frais_eleves") || "[]") as Array<{ id?: number }>;
-    const maxDossierId = existingFrais.reduce(
-      (m, f) => Math.max(m, typeof f.id === "number" ? f.id : 0),
-      0
-    );
-    const dossierAvecId = { id: maxDossierId + 1, ...dossierFinancier };
-    localStorage.setItem("school_frais_eleves", JSON.stringify([...existingFrais, dossierAvecId]));
-
-    console.log(`✅ Dossier financier créé pour ${student.firstName} ${student.lastName}:`, dossierAvecId);
-
-    setIsAddModalOpen(false);
-  };
-
-  const handleEditStudent = (updatedStudent: any) => {
-    setStudents(students.map(s => s.id === updatedStudent.id ? updatedStudent : s));
-    setEditingStudent(null);
-  };
-
-  const handleDeleteStudent = (id: number) => {
-    if (confirm("Êtes-vous sûr de vouloir supprimer cet élève ?")) {
-      setStudents(students.filter(s => s.id !== id));
-      setOpenMenuId(null);
+  const handleAddStudent = async (newStudent: Record<string, unknown>) => {
+    const classeId = String(newStudent.classe ?? "").trim();
+    if (!classeId) {
+      flash("Sélectionnez une classe.", "error");
+      return false;
     }
+    const matricule = `EL${Date.now().toString(36).toUpperCase().slice(-10)}`;
+    const { data, error: err } = await addStudent({
+      matricule,
+      first_name: String(newStudent.firstName ?? ""),
+      last_name: String(newStudent.lastName ?? ""),
+      date_naissance: String(newStudent.dateNaissance ?? ""),
+      lieu_naissance: strOrNull(newStudent.lieuNaissance),
+      genre: newStudent.genre === "F" ? "F" : "M",
+      classe_id: classeId,
+      status: "active",
+      groupe_sanguin: parseGroupeSanguin(String(newStudent.groupeSanguin ?? "")),
+      maladies_particulieres: String(newStudent.maladiesParticulieres ?? "").trim() || null,
+      phone: strOrNull(newStudent.phone),
+      email: strOrNull(newStudent.email),
+      adresse: strOrNull(newStudent.adresse),
+      piece_naissance: strOrNull(newStudent.pieceNaissance),
+    });
+    if (err) {
+      flash(String(err), "error");
+      return false;
+    }
+    const sid = data?.id as string | undefined;
+    const supabase = createClient();
+    const docItems = studentDocumentItemsFromPayload(newStudent);
+    let docErr: string | null = null;
+    if (sid && docItems.length > 0) {
+      const { errors } = await uploadStudentDocumentsBatch(supabase, sid, docItems);
+      docErr = errors.length ? errors.join(" ; ") : null;
+    }
+    let photoErr: string | null = null;
+    const photoF = newStudent.profilePhotoFile;
+    if (sid && photoF instanceof File) {
+      const pr = await uploadStudentProfilePhoto(supabase, sid, photoF);
+      photoErr = pr.error;
+    }
+    let parentErr: string | null = null;
+    if (sid) {
+      parentErr = (await insertParentAndLink(supabase, sid, newStudent)).error;
+    }
+    setIsAddModalOpen(false);
+    await refresh();
+    const extras = [docErr && `document(s) : ${docErr}`, photoErr && `photo : ${photoErr}`, parentErr && `parent : ${parentErr}`].filter(
+      Boolean
+    ) as string[];
+    if (extras.length) {
+      flash(`Élève enregistré ; ${extras.join(" ; ")}`, docErr || photoErr ? "error" : "info");
+    } else {
+      flash("Élève enregistré.", "success");
+    }
+  };
+
+  const handleEditStudent = async (updated: Record<string, unknown> & { id: string }) => {
+    const classeId = String(updated.classe ?? "").trim();
+    if (!classeId) {
+      flash("Sélectionnez une classe.", "error");
+      return false;
+    }
+    const studentId = String(updated.id);
+    const { error: err } = await updateStudent(studentId, {
+      first_name: String(updated.firstName ?? ""),
+      last_name: String(updated.lastName ?? ""),
+      date_naissance: String(updated.dateNaissance ?? ""),
+      lieu_naissance: strOrNull(updated.lieuNaissance),
+      genre: updated.genre === "F" ? "F" : "M",
+      classe_id: classeId,
+      groupe_sanguin: parseGroupeSanguin(String(updated.groupeSanguin ?? "")),
+      maladies_particulieres: String(updated.maladiesParticulieres ?? "").trim() || null,
+      phone: strOrNull(updated.phone),
+      email: strOrNull(updated.email),
+      adresse: strOrNull(updated.adresse),
+      piece_naissance: strOrNull(updated.pieceNaissance),
+    });
+    if (err) {
+      flash(String(err), "error");
+      return false;
+    }
+    const supabase = createClient();
+    const parentErr = (await upsertParentForStudent(supabase, studentId, updated)).error;
+    const docItems = studentDocumentItemsFromPayload(updated);
+    let docErr: string | null = null;
+    if (docItems.length > 0) {
+      const { errors } = await uploadStudentDocumentsBatch(supabase, studentId, docItems);
+      docErr = errors.length ? errors.join(" ; ") : null;
+    }
+    let photoErr: string | null = null;
+    const photoF = updated.profilePhotoFile;
+    if (photoF instanceof File) {
+      const pr = await uploadStudentProfilePhoto(supabase, studentId, photoF);
+      photoErr = pr.error;
+    }
+    setEditingStudent(null);
+    await refresh();
+    const parts: string[] = [];
+    if (parentErr) parts.push(`parent : ${parentErr}`);
+    if (docErr) parts.push(`document(s) : ${docErr}`);
+    if (photoErr) parts.push(`photo : ${photoErr}`);
+    if (parts.length) flash(`Fiche mise à jour ; ${parts.join(" ; ")}`, docErr || photoErr ? "error" : "info");
+    else flash("Fiche élève mise à jour.", "success");
+  };
+
+  const handleDeleteStudent = async (id: string) => {
+    if (!confirm("Êtes-vous sûr de vouloir supprimer cet élève ?")) return;
+    const { error: err } = await deleteStudent(id);
+    if (err) {
+      flash(String(err), "error");
+      return;
+    }
+    await refresh();
+    flash("Élève supprimé.", "success");
   };
 
   const handleExportExcel = () => {
@@ -161,21 +399,28 @@ export default function StudentsPage() {
       lastName: student.lastName,
       dateOfBirth: student.dateNaissance,
       classe: student.classe,
-      parent: { name: "Parent fictif", phone: "0123456789" },
+      parent: { name: "—", phone: "—" },
     }));
-
     exportStudentsToExcel(studentsForExport);
+  };
+
+  const statusLabel = (s: string) => {
+    if (s === "active") return "Actif";
+    if (s === "inactive") return "Inactif";
+    if (s === "transferred") return "Transféré";
+    return s;
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      <FlashNotice payload={notice} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Gestion des élèves</h1>
-          <p className="text-muted-foreground">Liste complète des élèves inscrits</p>
+          <p className="text-muted-foreground">Liste complète des élèves inscrits (Supabase)</p>
         </div>
         <button
+          type="button"
           onClick={() => setIsAddModalOpen(true)}
           className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
         >
@@ -184,10 +429,14 @@ export default function StudentsPage() {
         </button>
       </div>
 
-      {/* Filtres et recherche */}
+      {error ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
+          {error}
+        </div>
+      ) : null}
+
       <div className="bg-card border border-border rounded-xl p-4">
         <div className="flex flex-col md:flex-row gap-4">
-          {/* Recherche */}
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <input
@@ -199,26 +448,25 @@ export default function StudentsPage() {
             />
           </div>
 
-          {/* Filtre classe */}
           <div className="relative">
             <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <select
               value={selectedClass}
               onChange={(e) => setSelectedClass(e.target.value)}
-              className="pl-10 pr-8 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none cursor-pointer min-w-[150px]"
+              disabled={classesLoading}
+              className="pl-10 pr-8 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none cursor-pointer min-w-[150px] disabled:opacity-60"
             >
               <option value="all">Toutes les classes</option>
-              <option value="CP">CP</option>
-              <option value="CE1">CE1</option>
-              <option value="CE2">CE2</option>
-              <option value="CM1">CM1</option>
-              <option value="CM2">CM2</option>
-              <option value="6ème">6ème</option>
+              {classOptions.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.niveau})
+                </option>
+              ))}
             </select>
           </div>
 
-          {/* Export Excel */}
           <button
+            type="button"
             onClick={handleExportExcel}
             className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
           >
@@ -228,147 +476,148 @@ export default function StudentsPage() {
         </div>
       </div>
 
-      {/* Stats rapides */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total élèves</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{studentsData.length}</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{loading ? "…" : rows.length}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Garçons</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {studentsData.filter((s) => s.genre === "M").length}
+            {loading ? "…" : rows.filter((s) => s.genre === "M").length}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Filles</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {studentsData.filter((s) => s.genre === "F").length}
+            {loading ? "…" : rows.filter((s) => s.genre === "F").length}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Résultats</p>
+          <p className="text-sm text-muted-foreground">Résultats filtre</p>
           <p className="text-2xl font-bold text-foreground mt-1">{filteredStudents.length}</p>
         </div>
       </div>
 
-      {/* Tableau des élèves */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-muted/50 border-b border-border">
-                <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Matricule</th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Nom complet</th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Classe</th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Date de naissance</th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Genre</th>
-                <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Statut</th>
-                <th className="text-right px-6 py-4 text-sm font-semibold text-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredStudents.map((student) => (
-                <tr key={student.id} className="border-b border-border hover:bg-accent/50 transition">
-                  <td className="px-6 py-4">
-                    <span className="font-mono text-sm text-muted-foreground">{student.matricule}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                        <span className="text-primary font-semibold text-sm">
-                          {student.firstName[0]}
-                          {student.lastName[0]}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {student.firstName} {student.lastName}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2.5 py-1 bg-secondary/10 text-secondary rounded-md text-sm font-medium">
-                      {student.classe}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-muted-foreground">
-                    {new Date(student.dateNaissance).toLocaleDateString("fr-FR")}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-sm text-muted-foreground">{student.genre === "M" ? "Garçon" : "Fille"}</span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="inline-flex items-center px-2.5 py-1 bg-success/10 text-success rounded-md text-sm font-medium">
-                      Actif
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => router.push(`/dashboard/students/${student.id}`)}
-                        className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-info"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setEditingStudent(student)}
-                        className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
-                      >
-                        <Edit className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteStudent(student.id)}
-                        className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+          {loading ? (
+            <p className="p-8 text-center text-muted-foreground">Chargement des élèves…</p>
+          ) : (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-muted/50 border-b border-border">
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Matricule</th>
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Nom complet</th>
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Classe</th>
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Date de naissance</th>
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Genre</th>
+                  <th className="text-left px-6 py-4 text-sm font-semibold text-foreground">Statut</th>
+                  <th className="text-right px-6 py-4 text-sm font-semibold text-foreground">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredStudents.map((student) => (
+                  <tr key={student.id} className="border-b border-border hover:bg-accent/50 transition">
+                    <td className="px-6 py-4">
+                      <span className="font-mono text-sm text-muted-foreground">{student.matricule}</span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                          <span className="text-primary font-semibold text-sm">
+                            {student.firstName[0]}
+                            {student.lastName[0]}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {student.firstName} {student.lastName}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2.5 py-1 bg-secondary/10 text-secondary rounded-md text-sm font-medium">
+                        {student.classe}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm text-muted-foreground">
+                      {new Date(student.dateNaissance).toLocaleDateString("fr-FR")}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="text-sm text-muted-foreground">
+                        {student.genre === "M" ? "Garçon" : "Fille"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2.5 py-1 bg-success/10 text-success rounded-md text-sm font-medium">
+                        {statusLabel(student.status)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => router.push(`/dashboard/students/${student.id}`)}
+                          className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-info"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditingStudent({
+                              ...student,
+                              classe: student.classeId,
+                            })
+                          }
+                          className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteStudent(student.id)}
+                          className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
 
-        {/* Pagination */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-border">
           <p className="text-sm text-muted-foreground">
             Affichage de <span className="font-medium text-foreground">{filteredStudents.length}</span> sur{" "}
-            <span className="font-medium text-foreground">{studentsData.length}</span> élèves
+            <span className="font-medium text-foreground">{rows.length}</span> élèves
           </p>
-          <div className="flex gap-2">
-            <button className="px-3 py-1.5 bg-background border border-input hover:bg-accent rounded-lg transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed">
-              Précédent
-            </button>
-            <button className="px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium">1</button>
-            <button className="px-3 py-1.5 bg-background border border-input hover:bg-accent rounded-lg transition text-sm font-medium">
-              2
-            </button>
-            <button className="px-3 py-1.5 bg-background border border-input hover:bg-accent rounded-lg transition text-sm font-medium">
-              Suivant
-            </button>
-          </div>
         </div>
       </div>
 
-      {/* Modal d'ajout d'élève */}
       <AddStudentModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSubmit={handleAddStudent}
+        classOptions={classOptions}
+        classesLoading={classesLoading}
       />
 
-      {/* Modal d'édition d'élève */}
-      {editingStudent && (
+      {editingStudent ? (
         <AddStudentModal
-          isOpen={!!editingStudent}
+          isOpen
           onClose={() => setEditingStudent(null)}
           onSubmit={handleEditStudent}
           student={editingStudent}
+          classOptions={classOptions}
+          classesLoading={classesLoading}
         />
-      )}
+      ) : null}
     </div>
   );
 }

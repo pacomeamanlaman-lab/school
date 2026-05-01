@@ -1,13 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import FlashNotice from "./FlashNotice";
 import Modal from "./Modal";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
 import { BookOpen, Hash, ListPlus, Trash2 } from "lucide-react";
 import {
+  inferCycleFromNiveau,
   NIVEAUX_PRIMAIRE_CI,
   NIVEAUX_SECONDAIRE_CI,
   niveauxPourFiltreCycle,
 } from "@/lib/cycles-scolaires-ci";
+import { sortClassNiveauStrings } from "@/lib/supabase/fetch-class-niveaux";
 
 type CycleMatiere = "Primaire" | "Secondaire" | "Les_deux";
 type SerieBac = "A1" | "A2" | "B" | "C" | "D";
@@ -40,9 +44,9 @@ interface AddMatiereModalProps {
   onSubmitBatch?: (data: any[]) => void;
   matiere?: any;
   existingMatieres?: Array<{ nom: string; cycle: CycleMatiere }>;
+  /** Niveaux issus des classes actives (prioritaire sur les listes CI). */
+  classNiveauxFromDb?: string[];
 }
-
-const MATIERE_DRAFT_STORAGE_KEY = "school_matieres_draft_queue";
 
 const couleursPredefinies = [
   { nom: "Bleu", valeur: "#00aef0" },
@@ -177,91 +181,6 @@ function newDraftId(): string {
   return `draft-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function saveDraftQueue(queue: MatiereDraftLine[]): void {
-  if (typeof window !== "undefined") {
-    if (queue.length === 0) {
-      localStorage.removeItem(MATIERE_DRAFT_STORAGE_KEY);
-    } else {
-      localStorage.setItem(MATIERE_DRAFT_STORAGE_KEY, JSON.stringify(queue));
-    }
-  }
-}
-
-function loadDraftQueue(): MatiereDraftLine[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(MATIERE_DRAFT_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.flatMap((r) => {
-        const row = r as Record<string, unknown>;
-        const nom = String(row.nom ?? "").trim();
-        const coefficient = Number(row.coefficient) || 1;
-        const coefficientMode =
-          row.coefficientMode === "par_cycle"
-            ? "par_cycle"
-            : row.coefficientMode === "par_niveau"
-              ? "par_niveau"
-              : row.coefficientMode === "unique"
-                ? "unique"
-                : "";
-        const coefficientPrimaire = Number(row.coefficientPrimaire) || coefficient;
-        const coefficientSecondaire = Number(row.coefficientSecondaire) || coefficient;
-        const coefficientsParSerieRaw = (row.coefficientsParSerie ?? {}) as Record<string, unknown>;
-        const coefficientsParSerie: CoeffParSerie = {
-          A1: Number(coefficientsParSerieRaw.A1) || coefficient,
-          A2: Number(coefficientsParSerieRaw.A2) || coefficient,
-          B: Number(coefficientsParSerieRaw.B) || coefficient,
-          C: Number(coefficientsParSerieRaw.C) || coefficient,
-          D: Number(coefficientsParSerieRaw.D) || coefficient,
-        };
-        const couleur = String(row.couleur ?? "#00aef0");
-        const cycleRaw = String(row.cycle ?? "");
-        const cycle: "" | CycleMatiere =
-          cycleRaw === "Primaire" || cycleRaw === "Secondaire" || cycleRaw === "Les_deux"
-            ? (cycleRaw as CycleMatiere)
-            : "";
-        const niveaux = Array.isArray(row.niveaux)
-          ? row.niveaux.map(String).filter(Boolean)
-          : [];
-        const seriesTerminale: SerieBac[] = Array.isArray(row.seriesTerminale)
-          ? row.seriesTerminale
-              .map(String)
-              .filter((s): s is SerieBac => ["A1", "A2", "B", "C", "D"].includes(s))
-          : ["A1", "A2", "B", "C", "D"];
-        const coeffParNiveauRaw = (row.coefficientsParNiveau ?? {}) as Record<string, unknown>;
-        const coefficientsParNiveau = Object.entries(coeffParNiveauRaw).reduce((acc, [k, v]) => {
-          const nk = k as NiveauCoefficient;
-          const val = Number(v) || coefficient;
-          acc[nk] = val;
-          return acc;
-        }, {} as CoeffParNiveau);
-        const active = row.active !== false;
-        if (!nom || !cycle || niveaux.length === 0) return [];
-        const line: MatiereDraftLine = {
-          draftId: typeof row.draftId === "string" ? row.draftId : newDraftId(),
-          nom,
-          nomOption: nom,
-          coefficient,
-          coefficientMode,
-          coefficientPrimaire,
-          coefficientSecondaire,
-          coefficientsParNiveau,
-          coefficientsParSerie,
-          couleur,
-          cycle,
-          niveaux,
-          seriesTerminale,
-          active,
-        };
-        return [line];
-    });
-  } catch {
-    return [];
-  }
-}
-
 export default function AddMatiereModal({
   isOpen,
   onClose,
@@ -269,10 +188,12 @@ export default function AddMatiereModal({
   onSubmitBatch,
   matiere,
   existingMatieres = [],
+  classNiveauxFromDb = [],
 }: AddMatiereModalProps) {
   const isEditMode = !!matiere;
   const [formData, setFormData] = useState<MatiereFormData>(emptyForm);
   const [draftQueue, setDraftQueue] = useState<MatiereDraftLine[]>([]);
+  const { notice, flash } = useFlashNotice();
 
   useEffect(() => {
     if (!isOpen) return;
@@ -302,18 +223,27 @@ export default function AddMatiereModal({
       });
     } else {
       setFormData(emptyForm());
-      setDraftQueue(loadDraftQueue());
+      setDraftQueue([]);
     }
   }, [isOpen, isEditMode, matiere]);
 
-  const niveauxDisponibles =
-    formData.cycle === "Primaire"
-      ? [...NIVEAUX_PRIMAIRE_CI]
-      : formData.cycle === "Secondaire"
-        ? [...NIVEAUX_SECONDAIRE_CI]
-        : formData.cycle === "Les_deux"
-          ? niveauxPourFiltreCycle("Les_deux")
-          : [];
+  const niveauxDisponibles = useMemo(() => {
+    const fallback =
+      formData.cycle === "Primaire"
+        ? [...NIVEAUX_PRIMAIRE_CI]
+        : formData.cycle === "Secondaire"
+          ? [...NIVEAUX_SECONDAIRE_CI]
+          : formData.cycle === "Les_deux"
+            ? niveauxPourFiltreCycle("Les_deux")
+            : [];
+    if (!classNiveauxFromDb.length || !formData.cycle) return fallback;
+    const dbSorted = sortClassNiveauStrings(classNiveauxFromDb);
+    if (formData.cycle === "Les_deux") {
+      return dbSorted.length ? dbSorted : fallback;
+    }
+    const filt = dbSorted.filter((n) => inferCycleFromNiveau(n) === formData.cycle);
+    return filt.length ? filt : fallback;
+  }, [formData.cycle, classNiveauxFromDb]);
   const matieresPredefinies = formData.cycle ? MATIERES_PREDEFINIES[formData.cycle] : [];
 
   const getPredefCoeffs = (entry?: MatierePredef) => ({
@@ -326,7 +256,6 @@ export default function AddMatiereModal({
 
   const persistQueue = (next: MatiereDraftLine[]) => {
     setDraftQueue(next);
-    saveDraftQueue(next);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -616,7 +545,7 @@ export default function AddMatiereModal({
     e.preventDefault();
     const error = validateForm();
     if (error) {
-      alert(error);
+      flash(error, "error");
       return;
     }
     onSubmit?.({ ...matiere, ...buildMatierePayload(formData) });
@@ -626,20 +555,20 @@ export default function AddMatiereModal({
   const handleAddToQueue = () => {
     const error = validateForm();
     if (error) {
-      alert(error);
+      flash(error, "error");
       return;
     }
     if (!formData.cycle) {
-      alert("Sélectionnez un cycle pédagogique.");
+      flash("Sélectionnez un cycle pédagogique.", "error");
       return;
     }
     const nom = formData.nom.trim();
     if (isDuplicateInExisting(nom, formData.cycle)) {
-      alert("Cette matière existe déjà dans ce cycle.");
+      flash("Cette matière existe déjà dans ce cycle.", "error");
       return;
     }
     if (isDuplicateInQueue(nom, formData.cycle)) {
-      alert("Cette matière est déjà dans la liste d'attente.");
+      flash("Cette matière est déjà dans la liste d'attente.", "error");
       return;
     }
     const nextLine: MatiereDraftLine = { ...formData, nom, draftId: newDraftId() };
@@ -657,7 +586,7 @@ export default function AddMatiereModal({
 
   const handleValidateQueue = () => {
     if (draftQueue.length === 0) {
-      alert("Ajoutez au moins une matière à la liste.");
+      flash("Ajoutez au moins une matière à la liste.", "error");
       return;
     }
     onSubmitBatch?.(
@@ -675,6 +604,8 @@ export default function AddMatiereModal({
       title={isEditMode ? "Modifier la matière" : "Ajouter des matières"}
       size={isEditMode ? "md" : "lg"}
     >
+      <div className="space-y-3">
+        <FlashNotice payload={notice} />
       {isEditMode ? (
         <form onSubmit={handleSubmitEdit} className="space-y-6">
           <MatiereFormFields
@@ -805,6 +736,7 @@ export default function AddMatiereModal({
           </div>
         </div>
       )}
+      </div>
     </Modal>
   );
 }

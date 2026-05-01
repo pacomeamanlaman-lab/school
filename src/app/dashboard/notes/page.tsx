@@ -1,54 +1,163 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Filter, Save, Download, Award, TrendingUp, FileSpreadsheet, MessageCircle } from "lucide-react";
+import FlashNotice from "@/components/FlashNotice";
 import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
 import { buildNoteWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { exportNotesToPDF } from "@/utils/pdfExport";
 import { exportNotesToExcel } from "@/utils/excelExport";
+import { createClient } from "@/lib/supabase/client";
 
-// Données de démonstration
-const classesData = [
-  { id: 1, name: "CP - Classe A", niveau: "CP" },
-  { id: 2, name: "CE1 - Classe A", niveau: "CE1" },
-  { id: 3, name: "CE2 - Classe A", niveau: "CE2" },
-  { id: 4, name: "CM1 - Classe A", niveau: "CM1" },
-  { id: 5, name: "CM2 - Classe A", niveau: "CM2" },
-  { id: 6, name: "6ème - Classe A", niveau: "6ème" },
-];
+type ClasseOption = { id: string; name: string };
+type MatiereOption = { id: string; nom: string; coefficient: number };
+type TrimestreOption = { id: string; nom: string };
+type StudentRow = { id: string; firstName: string; lastName: string };
 
-const matieres = [
-  { id: 1, name: "Français", coef: 3 },
-  { id: 2, name: "Mathématiques", coef: 3 },
-  { id: 3, name: "Histoire-Géo", coef: 2 },
-  { id: 4, name: "Sciences", coef: 2 },
-  { id: 5, name: "Anglais", coef: 2 },
-  { id: 6, name: "EPS", coef: 1 },
-];
-
-const studentsData = [
-  { id: 1, firstName: "Marie", lastName: "Dupont", classe: "CP - Classe A" },
-  { id: 2, firstName: "Jean", lastName: "Martin", classe: "CP - Classe A" },
-  { id: 3, firstName: "Sophie", lastName: "Bernard", classe: "CP - Classe A" },
-  { id: 4, firstName: "Lucas", lastName: "Petit", classe: "CP - Classe A" },
-  { id: 5, firstName: "Emma", lastName: "Dubois", classe: "CP - Classe A" },
-];
-
-const trimestres = ["Trimestre 1", "Trimestre 2", "Trimestre 3"];
+function appreciationFromNote(studentNote: number | undefined): string {
+  if (studentNote === undefined || Number.isNaN(studentNote)) return "-";
+  if (studentNote >= 16) return "Très bien";
+  if (studentNote >= 14) return "Bien";
+  if (studentNote >= 12) return "Assez bien";
+  if (studentNote >= 10) return "Passable";
+  return "Insuffisant";
+}
 
 export default function NotesPage() {
-  const [selectedClass, setSelectedClass] = useState("CP - Classe A");
-  const [selectedMatiere, setSelectedMatiere] = useState("Français");
-  const [selectedTrimestre, setSelectedTrimestre] = useState("Trimestre 1");
-  const [notes, setNotes] = useState<Record<number, number>>({});
+  const [classes, setClasses] = useState<ClasseOption[]>([]);
+  const [matieres, setMatieres] = useState<MatiereOption[]>([]);
+  const [trimestres, setTrimestres] = useState<TrimestreOption[]>([]);
+  const [selectedClasseId, setSelectedClasseId] = useState("");
+  const [selectedMatiereId, setSelectedMatiereId] = useState("");
+  const [selectedTrimestreId, setSelectedTrimestreId] = useState("");
+  const [students, setStudents] = useState<StudentRow[]>([]);
+  const [notes, setNotes] = useState<Record<string, number>>({});
   const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { notice, flash } = useFlashNotice();
 
-  const filteredStudents = studentsData.filter((s) => s.classe === selectedClass);
-  const currentMatiere = matieres.find((m) => m.name === selectedMatiere);
+  const selectedClassName = useMemo(
+    () => classes.find((c) => c.id === selectedClasseId)?.name ?? "",
+    [classes, selectedClasseId]
+  );
+  const selectedMatiereNom = useMemo(
+    () => matieres.find((m) => m.id === selectedMatiereId)?.nom ?? "",
+    [matieres, selectedMatiereId]
+  );
+  const selectedTrimestreNom = useMemo(
+    () => trimestres.find((t) => t.id === selectedTrimestreId)?.nom ?? "",
+    [trimestres, selectedTrimestreId]
+  );
+  const currentMatiere = useMemo(
+    () => matieres.find((m) => m.id === selectedMatiereId),
+    [matieres, selectedMatiereId]
+  );
 
-  const handleNoteChange = (studentId: number, value: string) => {
+  const loadMeta = useCallback(async () => {
+    const supabase = createClient();
+    const [{ data: cl, error: e1 }, { data: mat, error: e2 }, { data: tr, error: e3 }] = await Promise.all([
+      supabase.from("classes").select("id, name").eq("status", "active").order("niveau"),
+      supabase.from("matieres").select("id, nom, coefficient").order("nom"),
+      supabase.from("trimestres").select("id, nom, numero").order("numero"),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    if (e3) throw e3;
+    const clOpts = (cl ?? []).map((r) => ({ id: r.id as string, name: r.name as string }));
+    const mOpts = (mat ?? []).map((r) => ({
+      id: r.id as string,
+      nom: r.nom as string,
+      coefficient: Number(r.coefficient) || 1,
+    }));
+    const tOpts = (tr ?? []).map((r) => ({ id: r.id as string, nom: r.nom as string }));
+    setClasses(clOpts);
+    setMatieres(mOpts);
+    setTrimestres(tOpts);
+    setSelectedClasseId((prev) => prev || clOpts[0]?.id || "");
+    setSelectedMatiereId((prev) => prev || mOpts[0]?.id || "");
+    setSelectedTrimestreId((prev) => prev || tOpts[0]?.id || "");
+  }, []);
+
+  const loadStudentsAndNotes = useCallback(
+    async (classeId: string, matiereId: string, trimestreId: string) => {
+      if (!classeId || !matiereId || !trimestreId) {
+        setStudents([]);
+        setNotes({});
+        return;
+      }
+      const supabase = createClient();
+      const { data: studs, error: e1 } = await supabase
+        .from("students")
+        .select("id, first_name, last_name")
+        .eq("classe_id", classeId)
+        .eq("status", "active")
+        .order("last_name");
+      if (e1) throw e1;
+      const list: StudentRow[] = (studs ?? []).map((s) => ({
+        id: s.id as string,
+        firstName: s.first_name as string,
+        lastName: s.last_name as string,
+      }));
+      setStudents(list);
+      const ids = list.map((s) => s.id);
+      const nextNotes: Record<string, number> = {};
+      if (ids.length) {
+        const { data: nrows, error: e2 } = await supabase
+          .from("notes")
+          .select("student_id, note")
+          .eq("classe_id", classeId)
+          .eq("matiere_id", matiereId)
+          .eq("trimestre_id", trimestreId)
+          .in("student_id", ids);
+        if (e2) throw e2;
+        for (const r of nrows ?? []) {
+          nextNotes[r.student_id as string] = Number(r.note);
+        }
+      }
+      setNotes(nextNotes);
+    },
+    []
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        await loadMeta();
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Erreur");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadMeta]);
+
+  useEffect(() => {
+    if (!selectedClasseId || !selectedMatiereId || !selectedTrimestreId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await loadStudentsAndNotes(selectedClasseId, selectedMatiereId, selectedTrimestreId);
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Erreur");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClasseId, selectedMatiereId, selectedTrimestreId, loadStudentsAndNotes]);
+
+  const handleNoteChange = (studentId: string, value: string) => {
     const note = parseFloat(value);
-    if (!isNaN(note) && note >= 0 && note <= 20) {
+    if (!Number.isNaN(note) && note >= 0 && note <= 20) {
       setNotes({ ...notes, [studentId]: note });
     } else if (value === "") {
       const newNotes = { ...notes };
@@ -59,69 +168,112 @@ export default function NotesPage() {
 
   const calculateMoyenne = () => {
     const notesArray = Object.values(notes);
-    if (notesArray.length === 0) return 0;
+    if (notesArray.length === 0) return "0.00";
     return (notesArray.reduce((acc, n) => acc + n, 0) / notesArray.length).toFixed(2);
   };
 
-  const handleSaveNotes = () => {
-    // TODO: Sauvegarder dans Supabase
-    console.log("Sauvegarde notes:", {
-      classe: selectedClass,
-      matiere: selectedMatiere,
-      trimestre: selectedTrimestre,
-      notes,
-    });
-    alert("Notes enregistrées avec succès !");
+  const ranksByStudentId = useMemo(() => {
+    const entries = students
+      .map((s) => ({ id: s.id, note: notes[s.id] }))
+      .filter((x) => x.note !== undefined && !Number.isNaN(x.note))
+      .sort((a, b) => (b.note as number) - (a.note as number));
+    const map = new Map<string, number>();
+    entries.forEach((e, i) => map.set(e.id, i + 1));
+    return map;
+  }, [students, notes]);
+
+  const handleSaveNotes = async () => {
+    if (!selectedClasseId || !selectedMatiereId || !selectedTrimestreId) return;
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      flash("Session requise.", "error");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const { error: delE } = await supabase
+        .from("notes")
+        .delete()
+        .eq("classe_id", selectedClasseId)
+        .eq("matiere_id", selectedMatiereId)
+        .eq("trimestre_id", selectedTrimestreId);
+      if (delE) throw delE;
+
+      const toInsert: {
+        student_id: string;
+        matiere_id: string;
+        trimestre_id: string;
+        classe_id: string;
+        note: number;
+        appreciation: string;
+        created_by: string;
+      }[] = [];
+      for (const s of students) {
+        const val = notes[s.id];
+        if (val === undefined || Number.isNaN(val)) continue;
+        toInsert.push({
+          student_id: s.id,
+          matiere_id: selectedMatiereId,
+          trimestre_id: selectedTrimestreId,
+          classe_id: selectedClasseId,
+          note: val,
+          appreciation: appreciationFromNote(val),
+          created_by: user.id,
+        });
+      }
+      if (toInsert.length) {
+        const { error: insE } = await supabase.from("notes").insert(toInsert);
+        if (insE) throw insE;
+      }
+      await loadStudentsAndNotes(selectedClasseId, selectedMatiereId, selectedTrimestreId);
+      flash("Notes enregistrées.", "success");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur enregistrement");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleExportPDF = async () => {
     try {
-      await exportNotesToPDF(selectedClass, selectedMatiere, selectedTrimestre);
-    } catch (error) {
-      console.error("Erreur lors de l'export PDF:", error);
-      alert("Erreur lors de l'export PDF");
+      await exportNotesToPDF(selectedClassName, selectedMatiereNom, selectedTrimestreNom);
+    } catch (e) {
+      console.error(e);
+      flash("Erreur export PDF.", "error");
     }
   };
 
   const handleExportExcel = () => {
-    const studentsWithNotes = filteredStudents.map((student) => {
+    const studentsWithNotes = students.map((student) => {
       const studentNote = notes[student.id];
-      const appreciation =
-        studentNote >= 16
-          ? "Très bien"
-          : studentNote >= 14
-          ? "Bien"
-          : studentNote >= 12
-          ? "Assez bien"
-          : studentNote >= 10
-          ? "Passable"
-          : studentNote
-          ? "Insuffisant"
-          : "-";
-
       return {
         firstName: student.firstName,
         lastName: student.lastName,
         note: studentNote,
-        appreciation,
+        appreciation: appreciationFromNote(studentNote),
       };
     });
-
-    exportNotesToExcel(selectedClass, selectedMatiere, selectedTrimestre, studentsWithNotes);
+    exportNotesToExcel(selectedClassName, selectedMatiereNom, selectedTrimestreNom, studentsWithNotes);
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      <FlashNotice payload={notice} />
       <div>
         <h1 className="text-2xl font-bold text-foreground">Notes & Évaluations</h1>
-        <p className="text-muted-foreground">Saisie et consultation des notes par matière</p>
+        <p className="text-muted-foreground">Saisie Supabase (table notes)</p>
       </div>
 
-      {/* Filtres */}
+      {error ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+      ) : null}
+
       <div className="bg-card border border-border rounded-xl p-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Classe */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Classe <span className="text-danger">*</span>
@@ -129,12 +281,13 @@ export default function NotesPage() {
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
+                value={selectedClasseId}
+                onChange={(e) => setSelectedClasseId(e.target.value)}
+                disabled={loading}
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
               >
-                {classesData.map((classe) => (
-                  <option key={classe.id} value={classe.name}>
+                {classes.map((classe) => (
+                  <option key={classe.id} value={classe.id}>
                     {classe.name}
                   </option>
                 ))}
@@ -142,60 +295,67 @@ export default function NotesPage() {
             </div>
           </div>
 
-          {/* Matière */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Matière <span className="text-danger">*</span>
             </label>
             <select
-              value={selectedMatiere}
-              onChange={(e) => setSelectedMatiere(e.target.value)}
+              value={selectedMatiereId}
+              onChange={(e) => setSelectedMatiereId(e.target.value)}
+              disabled={loading}
               className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
             >
               {matieres.map((matiere) => (
-                <option key={matiere.id} value={matiere.name}>
-                  {matiere.name} (Coef {matiere.coef})
+                <option key={matiere.id} value={matiere.id}>
+                  {matiere.nom} (Coef {matiere.coefficient})
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Trimestre */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Trimestre <span className="text-danger">*</span>
             </label>
             <select
-              value={selectedTrimestre}
-              onChange={(e) => setSelectedTrimestre(e.target.value)}
+              value={selectedTrimestreId}
+              onChange={(e) => setSelectedTrimestreId(e.target.value)}
+              disabled={loading}
               className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
             >
-              {trimestres.map((trimestre) => (
-                <option key={trimestre} value={trimestre}>
-                  {trimestre}
+              {trimestres.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nom}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Actions */}
-          <div className="flex items-end">
+          <div className="flex flex-col gap-2 justify-end">
             <button
+              type="button"
+              onClick={() => void handleExportPDF()}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm"
+            >
+              <Download className="w-4 h-4" />
+              PDF
+            </button>
+            <button
+              type="button"
               onClick={handleExportExcel}
               className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              Exporter en Excel
+              Excel
             </button>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Élèves</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{filteredStudents.length}</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{loading ? "…" : students.length}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Notes saisies</p>
@@ -207,22 +367,23 @@ export default function NotesPage() {
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Coefficient</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{currentMatiere?.coef || 1}</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{currentMatiere?.coefficient ?? 1}</p>
         </div>
       </div>
 
-      {/* Saisie des notes */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <h3 className="text-lg font-semibold text-foreground">
-            Saisie des notes - {selectedMatiere} ({selectedTrimestre})
+            Saisie des notes - {selectedMatiereNom} ({selectedTrimestreNom})
           </h3>
           <button
-            onClick={handleSaveNotes}
-            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
+            type="button"
+            disabled={saving || loading}
+            onClick={() => void handleSaveNotes()}
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
           >
             <Save className="w-4 h-4" />
-            Enregistrer
+            {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>
 
@@ -238,109 +399,112 @@ export default function NotesPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredStudents.map((student, index) => {
-                const studentNote = notes[student.id];
-                const appreciation =
-                  studentNote >= 16
-                    ? "Très bien"
-                    : studentNote >= 14
-                    ? "Bien"
-                    : studentNote >= 12
-                    ? "Assez bien"
-                    : studentNote >= 10
-                    ? "Passable"
-                    : studentNote
-                    ? "Insuffisant"
-                    : "-";
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                    Chargement…
+                  </td>
+                </tr>
+              ) : students.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                    Aucun élève dans cette classe.
+                  </td>
+                </tr>
+              ) : (
+                students.map((student) => {
+                  const studentNote = notes[student.id];
+                  const appreciation = appreciationFromNote(studentNote);
+                  const appreciationColor =
+                    studentNote !== undefined && !Number.isNaN(studentNote)
+                      ? studentNote >= 16
+                        ? "text-success"
+                        : studentNote >= 14
+                          ? "text-primary"
+                          : studentNote >= 10
+                            ? "text-warning"
+                            : "text-danger"
+                      : "text-muted-foreground";
+                  const rank = ranksByStudentId.get(student.id);
 
-                const appreciationColor =
-                  studentNote >= 16
-                    ? "text-success"
-                    : studentNote >= 14
-                    ? "text-primary"
-                    : studentNote >= 10
-                    ? "text-warning"
-                    : "text-danger";
-
-                return (
-                  <tr key={student.id} className="border-b border-border hover:bg-accent/50 transition">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                          <span className="text-primary font-semibold text-sm">
-                            {student.firstName[0]}
-                            {student.lastName[0]}
-                          </span>
+                  return (
+                    <tr key={student.id} className="border-b border-border hover:bg-accent/50 transition">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                            <span className="text-primary font-semibold text-sm">
+                              {student.firstName[0]}
+                              {student.lastName[0]}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-medium text-foreground">
+                              {student.firstName} {student.lastName}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-foreground">
-                            {student.firstName} {student.lastName}
-                          </p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <input
-                        type="number"
-                        min="0"
-                        max="20"
-                        step="0.5"
-                        value={notes[student.id] || ""}
-                        onChange={(e) => handleNoteChange(student.id, e.target.value)}
-                        placeholder="--"
-                        className="w-24 px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition text-center font-semibold text-lg"
-                      />
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`font-medium ${appreciationColor}`}>{appreciation}</span>
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      {studentNote ? (
-                        <div className="inline-flex items-center gap-1 px-3 py-1 bg-primary/10 text-primary rounded-md text-sm font-semibold">
-                          <Award className="w-4 h-4" />
-                          {index + 1}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground text-sm">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      {studentNote !== undefined && studentNote !== null && !Number.isNaN(studentNote) ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setWaContext(
-                              buildNoteWhatsAppContext({
-                                studentFirstName: student.firstName,
-                                studentLastName: student.lastName,
-                                classe: selectedClass,
-                                matiere: selectedMatiere,
-                                trimestre: selectedTrimestre,
-                                note: String(studentNote),
-                              })
-                            )
-                          }
-                          className="inline-flex items-center gap-1 rounded-lg border border-[#25D366]/40 bg-[#25D366]/10 px-2.5 py-1.5 text-xs font-medium text-[#128C7E] transition hover:bg-[#25D366]/20"
-                          title="Notifier le parent (WhatsApp)"
-                        >
-                          <MessageCircle className="h-3.5 w-3.5" />
-                          Notifier
-                        </button>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td className="px-6 py-4">
+                        <input
+                          type="number"
+                          min={0}
+                          max={20}
+                          step={0.5}
+                          value={notes[student.id] ?? ""}
+                          onChange={(e) => handleNoteChange(student.id, e.target.value)}
+                          placeholder="--"
+                          className="w-24 px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition text-center font-semibold text-lg"
+                        />
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={`font-medium ${appreciationColor}`}>{appreciation}</span>
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        {rank != null ? (
+                          <div className="inline-flex items-center gap-1 px-3 py-1 bg-primary/10 text-primary rounded-md text-sm font-semibold">
+                            <Award className="w-4 h-4" />
+                            {rank}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">-</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {studentNote !== undefined && !Number.isNaN(studentNote) ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setWaContext(
+                                buildNoteWhatsAppContext({
+                                  studentFirstName: student.firstName,
+                                  studentLastName: student.lastName,
+                                  classe: selectedClassName,
+                                  matiere: selectedMatiereNom,
+                                  trimestre: selectedTrimestreNom,
+                                  note: String(studentNote),
+                                })
+                              )
+                            }
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#25D366]/40 bg-[#25D366]/10 px-2.5 py-1.5 text-xs font-medium text-[#128C7E] transition hover:bg-[#25D366]/20"
+                          >
+                            <MessageCircle className="h-3.5 w-3.5" />
+                            Notifier
+                          </button>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>
 
-        {/* Résumé */}
         <div className="px-6 py-4 border-t border-border bg-muted/30">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-6">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-6 flex-wrap">
               <div>
                 <p className="text-sm text-muted-foreground">Moyenne de la classe</p>
                 <p className="text-2xl font-bold text-primary">{calculateMoyenne()}/20</p>
@@ -377,7 +541,7 @@ export default function NotesPage() {
         context={waContext}
         onConfirmSend={(ctx) => {
           console.log("[MVP WhatsApp] Note — envoi simulé:", ctx);
-          alert("Envoi WhatsApp simulé (branchement Meta + backend à venir).");
+          flash("Envoi WhatsApp simulé (branchement Meta + backend à venir).", "info");
         }}
       />
     </div>

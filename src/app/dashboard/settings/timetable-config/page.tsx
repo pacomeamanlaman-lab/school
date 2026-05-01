@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Save, RotateCcw } from "lucide-react";
 import {
   DAY_NAMES,
@@ -9,14 +9,38 @@ import {
   type DayName,
   generateTimeSlots,
   getDisabledSlotIdsByDay,
-  loadTimetableTechConfigFromStorage,
-  saveTimetableTechConfigToStorage,
   type TimetableTechConfig,
 } from "@/lib/timetable-tech-config";
+import { createClient } from "@/lib/supabase/client";
+import { fetchPrimaryEtablissement, loadTimetableFromSettings, mergeEtablissementSettings } from "@/lib/supabase/etablissement-settings";
 
 export default function TimetableConfigPage() {
-  const [config, setConfig] = useState<TimetableTechConfig>(() => loadTimetableTechConfigFromStorage());
+  const [etablissementId, setEtablissementId] = useState<string | null>(null);
+  const [config, setConfig] = useState<TimetableTechConfig>(DEFAULT_TIMETABLE_TECH_CONFIG);
   const [feedback, setFeedback] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const load = useCallback(async () => {
+    const supabase = createClient();
+    setLoading(true);
+    const { row, error } = await fetchPrimaryEtablissement(supabase);
+    if (error || !row) {
+      setFeedback(error ?? "Établissement introuvable — valeurs par défaut affichées.");
+      setConfig(loadTimetableFromSettings(null));
+      setLoading(false);
+      return;
+    }
+    setEtablissementId(row.id);
+    const fromDb = loadTimetableFromSettings(row.settings);
+    setConfig(fromDb);
+    setFeedback("Configuration chargée depuis Supabase.");
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const slots = useMemo(() => generateTimeSlots(config), [config]);
   const disabledByDay = useMemo(() => getDisabledSlotIdsByDay(config, slots), [config, slots]);
@@ -29,18 +53,35 @@ export default function TimetableConfigPage() {
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (config.activeDays.length === 0) {
       setFeedback("Selectionnez au moins un jour actif.");
       return;
     }
-    saveTimetableTechConfigToStorage(config);
-    setFeedback("Configuration enregistree localement (MVP).");
+    if (!etablissementId) {
+      setFeedback("Impossible d'enregistrer : pas d'établissement en base.");
+      return;
+    }
+    setSaving(true);
+    setFeedback("");
+    try {
+      const supabase = createClient();
+      const { error } = await mergeEtablissementSettings(supabase, etablissementId, { timetableTech: config });
+      if (error) {
+        setFeedback(`Erreur Supabase: ${error}`);
+        return;
+      }
+      setFeedback("Configuration enregistrée sur Supabase.");
+    } catch (e) {
+      setFeedback(e instanceof Error ? e.message : "Erreur inattendue lors de l'enregistrement.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleReset = () => {
     setConfig({ ...DEFAULT_TIMETABLE_TECH_CONFIG });
-    setFeedback("Configuration reinitialisee avec le modele par defaut.");
+    setFeedback("Configuration reinitialisee avec le modele par defaut (non enregistree).");
   };
 
   return (
@@ -52,13 +93,12 @@ export default function TimetableConfigPage() {
             Retour aux parametres
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-foreground">Configuration technique EDT</h1>
-          <p className="text-muted-foreground">
-            Definis les horaires de journee, les recreations et les pauses pour generer la grille.
-          </p>
+          <p className="text-muted-foreground">Stockée dans `etablissements.settings.timetableTech` (source unique pour les grilles EDT).</p>
         </div>
       </div>
 
       <div className="bg-card border border-border rounded-xl p-6 space-y-5">
+        {loading ? <p className="text-sm text-muted-foreground">Chargement…</p> : null}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">Debut de journee</label>
@@ -66,6 +106,7 @@ export default function TimetableConfigPage() {
               type="time"
               value={config.dayStart}
               onChange={(e) => setConfig((prev) => ({ ...prev, dayStart: e.target.value }))}
+              disabled={loading}
               className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -75,11 +116,12 @@ export default function TimetableConfigPage() {
               type="time"
               value={config.dayEnd}
               onChange={(e) => setConfig((prev) => ({ ...prev, dayEnd: e.target.value }))}
+              disabled={loading}
               className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-foreground mb-2">Duree d'un cours (min)</label>
+            <label className="block text-sm font-medium text-foreground mb-2">Duree d&apos;un cours (min)</label>
             <input
               type="number"
               min={30}
@@ -88,6 +130,7 @@ export default function TimetableConfigPage() {
               onChange={(e) =>
                 setConfig((prev) => ({ ...prev, courseDurationMin: Math.max(30, Number(e.target.value) || 60) }))
               }
+              disabled={loading}
               className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -100,7 +143,7 @@ export default function TimetableConfigPage() {
               const checked = config.activeDays.includes(day);
               return (
                 <label key={day} className="inline-flex items-center gap-2 text-sm text-foreground">
-                  <input type="checkbox" checked={checked} onChange={() => toggleDay(day)} className="h-4 w-4" />
+                  <input type="checkbox" checked={checked} onChange={() => toggleDay(day)} className="h-4 w-4" disabled={loading} />
                   {day}
                 </label>
               );
@@ -126,14 +169,13 @@ export default function TimetableConfigPage() {
                       },
                     }))
                   }
+                  disabled={loading}
                   className="w-full px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Exemple: mettre Mercredi a 12:20 pour une demi-journee.
-          </p>
+          <p className="text-xs text-muted-foreground mt-2">Exemple: mettre Mercredi a 12:20 pour une demi-journee.</p>
         </div>
 
         <div>
@@ -152,6 +194,7 @@ export default function TimetableConfigPage() {
                         breaks: prev.breaks.map((b) => (b.id === row.id ? { ...b, label: e.target.value } : b)),
                       }))
                     }
+                    disabled={loading}
                     className="w-full px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
@@ -166,6 +209,7 @@ export default function TimetableConfigPage() {
                         breaks: prev.breaks.map((b) => (b.id === row.id ? { ...b, start: e.target.value } : b)),
                       }))
                     }
+                    disabled={loading}
                     className="w-full px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
@@ -180,6 +224,7 @@ export default function TimetableConfigPage() {
                         breaks: prev.breaks.map((b) => (b.id === row.id ? { ...b, end: e.target.value } : b)),
                       }))
                     }
+                    disabled={loading}
                     className="w-full px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
                   />
                 </div>
@@ -193,6 +238,7 @@ export default function TimetableConfigPage() {
                         breaks: prev.breaks.map((b) => (b.id === row.id ? { ...b, enabled: e.target.checked } : b)),
                       }))
                     }
+                    disabled={loading}
                   />
                   Actif
                 </label>
@@ -205,6 +251,7 @@ export default function TimetableConfigPage() {
           <button
             type="button"
             onClick={handleReset}
+            disabled={loading || saving}
             className="inline-flex items-center gap-2 px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
           >
             <RotateCcw className="h-4 w-4" />
@@ -212,14 +259,15 @@ export default function TimetableConfigPage() {
           </button>
           <button
             type="button"
-            onClick={handleSave}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium"
+            onClick={() => void handleSave()}
+            disabled={loading || saving || !etablissementId}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
-            Enregistrer
+            {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>
-        {feedback && <p className="text-sm text-info">{feedback}</p>}
+        {feedback ? <p className="text-sm text-info">{feedback}</p> : null}
       </div>
 
       <div className="bg-card border border-border rounded-xl p-6">
@@ -252,13 +300,12 @@ export default function TimetableConfigPage() {
         <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3">
           <p className="text-sm font-medium text-foreground mb-1">Creneaux neutralises par jour</p>
           <p className="text-xs text-muted-foreground">
-            Les slots neutralises restent visibles dans la grille, avec l'etat "Ferme (demi-journee)".
+            Les slots neutralises restent visibles dans la grille, avec l&apos;etat &quot;Ferme (demi-journee)&quot;.
           </p>
           <div className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2">
             {DAY_NAMES.map((day) => (
               <div key={day} className="text-xs text-foreground">
-                <span className="font-medium">{day}:</span>{" "}
-                {disabledByDay[day]?.length ? disabledByDay[day].join(", ") : "aucun"}
+                <span className="font-medium">{day}:</span> {disabledByDay[day]?.length ? disabledByDay[day].join(", ") : "aucun"}
               </div>
             ))}
           </div>
@@ -267,4 +314,3 @@ export default function TimetableConfigPage() {
     </div>
   );
 }
-

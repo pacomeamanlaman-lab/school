@@ -2,16 +2,31 @@
 
 import { useState, useEffect } from "react";
 import Modal from "./Modal";
-import { School, Users, MapPin, User } from "lucide-react";
+import { School } from "lucide-react";
+import { CLASS_NIVEAUX_ORDERED } from "@/lib/supabase/class-niveaux";
 
 interface AddClassModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit?: (data: any) => void;
+  /** Retourner `false` pour laisser le modal ouvert (ex. erreur validation). */
+  onSubmit?: (data: any) => boolean | void | Promise<boolean | void>;
   classe?: any;
+  /** Profils titulaires possibles : value = UUID auth/profiles */
+  titulaireOptions?: { value: string; label: string }[];
+  /** Années scolaires en base : `value` = libellé `annees_scolaires.annee` */
+  anneeScolaireOptions?: { value: string; label: string }[];
+  anneesLoading?: boolean;
 }
 
-export default function AddClassModal({ isOpen, onClose, onSubmit, classe }: AddClassModalProps) {
+export default function AddClassModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  classe,
+  titulaireOptions = [],
+  anneeScolaireOptions = [],
+  anneesLoading = false,
+}: AddClassModalProps) {
   const [formData, setFormData] = useState({
     name: "",
     niveau: "",
@@ -22,6 +37,9 @@ export default function AddClassModal({ isOpen, onClose, onSubmit, classe }: Add
   });
 
   useEffect(() => {
+    const defaultAnnee =
+      anneeScolaireOptions[0]?.value ??
+      (typeof classe?.anneeScolaire === "string" && classe.anneeScolaire !== "—" ? classe.anneeScolaire : "");
     if (classe) {
       setFormData({
         name: classe.name || "",
@@ -29,7 +47,10 @@ export default function AddClassModal({ isOpen, onClose, onSubmit, classe }: Add
         capacite: classe.capacite || 30,
         titulaire: classe.titulaire || "",
         salle: classe.salle || "",
-        anneeScolaire: classe.anneeScolaire || "2024-2025",
+        anneeScolaire:
+          typeof classe.anneeScolaire === "string" && classe.anneeScolaire !== "—"
+            ? classe.anneeScolaire
+            : defaultAnnee,
       });
     } else {
       setFormData({
@@ -38,15 +59,17 @@ export default function AddClassModal({ isOpen, onClose, onSubmit, classe }: Add
         capacite: 30,
         titulaire: "",
         salle: "",
-        anneeScolaire: "2024-2025",
+        anneeScolaire: defaultAnnee,
       });
     }
-  }, [classe, isOpen]);
+  }, [classe, isOpen, anneeScolaireOptions]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (onSubmit) {
-      onSubmit(classe ? { ...classe, ...formData } : formData);
+      const payload = classe ? { ...classe, ...formData } : formData;
+      const keepOpen = (await onSubmit(payload)) === false;
+      if (keepOpen) return;
     }
     onClose();
   };
@@ -78,12 +101,11 @@ export default function AddClassModal({ isOpen, onClose, onSubmit, classe }: Add
                 className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
               >
                 <option value="">Sélectionner un niveau</option>
-                <option value="CP">CP</option>
-                <option value="CE1">CE1</option>
-                <option value="CE2">CE2</option>
-                <option value="CM1">CM1</option>
-                <option value="CM2">CM2</option>
-                <option value="6ème">6ème</option>
+                {CLASS_NIVEAUX_ORDERED.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -137,15 +159,36 @@ export default function AddClassModal({ isOpen, onClose, onSubmit, classe }: Add
               <label className="block text-sm font-medium text-foreground mb-2">
                 Année scolaire <span className="text-danger">*</span>
               </label>
-              <input
-                type="text"
-                name="anneeScolaire"
-                value={formData.anneeScolaire}
-                onChange={handleChange}
-                required
-                className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
-                placeholder="2024-2025"
-              />
+              {anneeScolaireOptions.length > 0 ? (
+                <select
+                  name="anneeScolaire"
+                  value={formData.anneeScolaire}
+                  onChange={handleChange}
+                  required
+                  disabled={anneesLoading}
+                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition disabled:opacity-60"
+                >
+                  <option value="">
+                    {anneesLoading ? "Chargement…" : "Choisir une année (paramètres / seed)"}
+                  </option>
+                  {anneeScolaireOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  name="anneeScolaire"
+                  value={formData.anneeScolaire}
+                  onChange={handleChange}
+                  required
+                  disabled={anneesLoading}
+                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition disabled:opacity-60"
+                  placeholder="2024-2025"
+                />
+              )}
             </div>
 
             <div>
@@ -158,11 +201,12 @@ export default function AddClassModal({ isOpen, onClose, onSubmit, classe }: Add
                 onChange={handleChange}
                 className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
               >
-                <option value="">Aucun (à définir plus tard)</option>
-                <option value="Mme Dupont">Mme Dupont</option>
-                <option value="M. Martin">M. Martin</option>
-                <option value="Mme Bernard">Mme Bernard</option>
-                <option value="M. Petit">M. Petit</option>
+                <option value="">Aucun</option>
+                {titulaireOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

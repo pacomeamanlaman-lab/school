@@ -1,140 +1,240 @@
 "use client";
 
-import { useState } from "react";
-import { Filter, Download, Eye, FileText, Send, FileSpreadsheet } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Filter, Download, Eye, Send, FileSpreadsheet } from "lucide-react";
+import FlashNotice from "@/components/FlashNotice";
 import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
 import { buildBulletinWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { exportBulletinToPDF } from "@/utils/pdfExport";
 import { exportBulletinsToExcel } from "@/utils/excelExport";
+import { createClient } from "@/lib/supabase/client";
+import { embedOne } from "@/lib/supabase/embed";
 
-// Données de démonstration
-const classesData = [
-  { id: 1, name: "CP - Classe A", niveau: "CP" },
-  { id: 2, name: "CE1 - Classe A", niveau: "CE1" },
-  { id: 3, name: "CE2 - Classe A", niveau: "CE2" },
-  { id: 4, name: "CM1 - Classe A", niveau: "CM1" },
-  { id: 5, name: "CM2 - Classe A", niveau: "CM2" },
-  { id: 6, name: "6ème - Classe A", niveau: "6ème" },
-];
+type ClasseOption = { id: string; name: string };
+type TrimestreOption = { id: string; nom: string };
 
-const trimestres = ["Trimestre 1", "Trimestre 2", "Trimestre 3"];
+export type BulletinStudent = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  classe: string;
+  moyenne: number;
+  rang: number;
+  notes: { matiere: string; note: number; coef: number; appreciation: string }[];
+  appreciationGenerale: string;
+};
 
-const studentsData = [
-  {
-    id: 1,
-    firstName: "Marie",
-    lastName: "Dupont",
-    classe: "CP - Classe A",
-    moyenne: 15.5,
-    rang: 1,
-    notes: [
-      { matiere: "Français", note: 16, coef: 3, appreciation: "Très bon travail" },
-      { matiere: "Mathématiques", note: 17, coef: 3, appreciation: "Excellente élève" },
-      { matiere: "Histoire-Géo", note: 14, coef: 2, appreciation: "Bien" },
-      { matiere: "Sciences", note: 15, coef: 2, appreciation: "Satisfaisant" },
-      { matiere: "Anglais", note: 16, coef: 2, appreciation: "Très bien" },
-      { matiere: "EPS", note: 15, coef: 1, appreciation: "Bon niveau" },
-    ],
-    appreciationGenerale: "Excellente élève, sérieuse et appliquée. Continue ainsi !",
-  },
-  {
-    id: 2,
-    firstName: "Jean",
-    lastName: "Martin",
-    classe: "CP - Classe A",
-    moyenne: 13.2,
-    rang: 3,
-    notes: [
-      { matiere: "Français", note: 12, coef: 3, appreciation: "Peut mieux faire" },
-      { matiere: "Mathématiques", note: 14, coef: 3, appreciation: "En progrès" },
-      { matiere: "Histoire-Géo", note: 13, coef: 2, appreciation: "Satisfaisant" },
-      { matiere: "Sciences", note: 13, coef: 2, appreciation: "Correct" },
-      { matiere: "Anglais", note: 14, coef: 2, appreciation: "Bien" },
-      { matiere: "EPS", note: 13, coef: 1, appreciation: "Moyen" },
-    ],
-    appreciationGenerale: "Élève sérieux mais doit fournir plus d'efforts en français.",
-  },
-  {
-    id: 3,
-    firstName: "Sophie",
-    lastName: "Bernard",
-    classe: "CP - Classe A",
-    moyenne: 16.8,
-    rang: 1,
-    notes: [
-      { matiere: "Français", note: 18, coef: 3, appreciation: "Excellente maîtrise" },
-      { matiere: "Mathématiques", note: 17, coef: 3, appreciation: "Très bon niveau" },
-      { matiere: "Histoire-Géo", note: 16, coef: 2, appreciation: "Très bien" },
-      { matiere: "Sciences", note: 17, coef: 2, appreciation: "Excellent" },
-      { matiere: "Anglais", note: 16, coef: 2, appreciation: "Très bien" },
-      { matiere: "EPS", note: 15, coef: 1, appreciation: "Bien" },
-    ],
-    appreciationGenerale: "Élève brillante et motivée. Félicitations !",
-  },
-];
+function appreciationGeneraleFromMoyenne(m: number): string {
+  if (m >= 16) return "Excellent parcours sur la période.";
+  if (m >= 14) return "Bon niveau général ; poursuivre les efforts.";
+  if (m >= 10) return "Résultats satisfaisants ; certaines matières peuvent être consolidées.";
+  return "Résultats fragiles ; un accompagnement renforcé est recommandé.";
+}
 
 export default function BulletinsPage() {
-  const [selectedClass, setSelectedClass] = useState("CP - Classe A");
-  const [selectedTrimestre, setSelectedTrimestre] = useState("Trimestre 1");
-  const [selectedStudent, setSelectedStudent] = useState<typeof studentsData[0] | null>(null);
+  const [classes, setClasses] = useState<ClasseOption[]>([]);
+  const [trimestres, setTrimestres] = useState<TrimestreOption[]>([]);
+  const [selectedClasseId, setSelectedClasseId] = useState("");
+  const [selectedTrimestreId, setSelectedTrimestreId] = useState("");
+  const [bulletinStudents, setBulletinStudents] = useState<BulletinStudent[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<BulletinStudent | null>(null);
   const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { notice, flash } = useFlashNotice();
 
-  const filteredStudents = studentsData.filter((s) => s.classe === selectedClass);
+  const selectedClassName = useMemo(
+    () => classes.find((c) => c.id === selectedClasseId)?.name ?? "",
+    [classes, selectedClasseId]
+  );
+  const selectedTrimestreNom = useMemo(
+    () => trimestres.find((t) => t.id === selectedTrimestreId)?.nom ?? "",
+    [trimestres, selectedTrimestreId]
+  );
 
-  const handleGeneratePDF = async (student: typeof studentsData[0]) => {
-    // Ouvrir le modal d'abord
+  const loadMeta = useCallback(async () => {
+    const supabase = createClient();
+    const [{ data: cl, error: e1 }, { data: tr, error: e2 }] = await Promise.all([
+      supabase.from("classes").select("id, name").eq("status", "active").order("niveau"),
+      supabase.from("trimestres").select("id, nom, numero").order("numero"),
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    const clOpts = (cl ?? []).map((r) => ({ id: r.id as string, name: r.name as string }));
+    const tOpts = (tr ?? []).map((r) => ({ id: r.id as string, nom: r.nom as string }));
+    setClasses(clOpts);
+    setTrimestres(tOpts);
+    setSelectedClasseId((prev) => prev || clOpts[0]?.id || "");
+    setSelectedTrimestreId((prev) => prev || tOpts[0]?.id || "");
+  }, []);
+
+  const loadBulletins = useCallback(async (classeId: string, trimestreId: string, classeName: string) => {
+    if (!classeId || !trimestreId) {
+      setBulletinStudents([]);
+      return;
+    }
+    const supabase = createClient();
+    const { data: studs, error: e1 } = await supabase
+      .from("students")
+      .select("id, first_name, last_name")
+      .eq("classe_id", classeId)
+      .eq("status", "active")
+      .order("last_name");
+    if (e1) throw e1;
+    const studentIds = (studs ?? []).map((s) => s.id as string);
+    if (studentIds.length === 0) {
+      setBulletinStudents([]);
+      return;
+    }
+
+    const { data: nrows, error: e2 } = await supabase
+      .from("notes")
+      .select(
+        `
+        student_id, note, appreciation,
+        matieres ( nom, coefficient )
+      `
+      )
+      .eq("classe_id", classeId)
+      .eq("trimestre_id", trimestreId)
+      .in("student_id", studentIds);
+    if (e2) throw e2;
+
+    const byStudent = new Map<
+      string,
+      { matiere: string; note: number; coef: number; appreciation: string }[]
+    >();
+    for (const sid of studentIds) byStudent.set(sid, []);
+    for (const r of nrows ?? []) {
+      const sid = r.student_id as string;
+      const m = embedOne<{ nom: string; coefficient: number }>(r.matieres);
+      const arr = byStudent.get(sid);
+      if (!arr) continue;
+      arr.push({
+        matiere: m?.nom ?? "—",
+        note: Number(r.note),
+        coef: Number(m?.coefficient) || 1,
+        appreciation: (r.appreciation as string) || "—",
+      });
+    }
+
+    const rows: BulletinStudent[] = (studs ?? []).map((s) => {
+      const sid = s.id as string;
+      const notes = byStudent.get(sid) ?? [];
+      let sum = 0;
+      let csum = 0;
+      for (const n of notes) {
+        sum += n.note * n.coef;
+        csum += n.coef;
+      }
+      const moyenne = csum > 0 ? Math.round((sum / csum) * 100) / 100 : 0;
+      return {
+        id: sid,
+        firstName: s.first_name as string,
+        lastName: s.last_name as string,
+        classe: classeName,
+        moyenne,
+        rang: 0,
+        notes,
+        appreciationGenerale: appreciationGeneraleFromMoyenne(moyenne),
+      };
+    });
+
+    const sorted = [...rows].sort((a, b) => b.moyenne - a.moyenne);
+    const rankMap = new Map<string, number>();
+    sorted.forEach((r, i) => rankMap.set(r.id, i + 1));
+    for (const r of rows) {
+      r.rang = rankMap.get(r.id) ?? 0;
+    }
+    setBulletinStudents(rows);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        await loadMeta();
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Erreur");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadMeta]);
+
+  useEffect(() => {
+    if (!selectedClasseId || !selectedTrimestreId) return;
+    let cancelled = false;
+    const name = classes.find((c) => c.id === selectedClasseId)?.name ?? "";
+    (async () => {
+      try {
+        await loadBulletins(selectedClasseId, selectedTrimestreId, name);
+      } catch (err: unknown) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Erreur");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedClasseId, selectedTrimestreId, classes, loadBulletins]);
+
+  const moyenneClasse = useMemo(() => {
+    const withNotes = bulletinStudents.filter((s) => s.notes.length > 0);
+    if (!withNotes.length) return 0;
+    return withNotes.reduce((a, s) => a + s.moyenne, 0) / withNotes.length;
+  }, [bulletinStudents]);
+
+  const handleGeneratePDF = async (student: BulletinStudent) => {
     setSelectedStudent(student);
-
-    // Attendre que le modal s'affiche
-    await new Promise(resolve => setTimeout(resolve, 300));
-
+    await new Promise((resolve) => setTimeout(resolve, 300));
     try {
-      await exportBulletinToPDF(
-        `${student.firstName} ${student.lastName}`,
-        selectedTrimestre
-      );
+      await exportBulletinToPDF(`${student.firstName} ${student.lastName}`, selectedTrimestreNom);
       setSelectedStudent(null);
-    } catch (error) {
-      console.error("Erreur lors de la génération du PDF:", error);
-      alert("Erreur lors de la génération du PDF");
+    } catch (e) {
+      console.error(e);
+      flash("Erreur PDF.", "error");
       setSelectedStudent(null);
     }
   };
 
   const handleGenerateAllPDF = async () => {
-    for (const student of filteredStudents) {
+    for (const student of bulletinStudents) {
       setSelectedStudent(student);
-      await new Promise(resolve => setTimeout(resolve, 500));
-
+      await new Promise((resolve) => setTimeout(resolve, 500));
       try {
-        await exportBulletinToPDF(
-          `${student.firstName} ${student.lastName}`,
-          selectedTrimestre
-        );
-      } catch (error) {
-        console.error(`Erreur pour ${student.firstName} ${student.lastName}:`, error);
+        await exportBulletinToPDF(`${student.firstName} ${student.lastName}`, selectedTrimestreNom);
+      } catch (e) {
+        console.error(e);
       }
     }
     setSelectedStudent(null);
-    alert(`${filteredStudents.length} bulletins générés avec succès !`);
+    flash(`${bulletinStudents.length} bulletin(s) traité(s).`, "success");
   };
 
   const handleExportExcel = () => {
-    exportBulletinsToExcel(selectedClass, selectedTrimestre, filteredStudents);
+    exportBulletinsToExcel(selectedClassName, selectedTrimestreNom, bulletinStudents);
   };
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      <FlashNotice payload={notice} />
       <div>
         <h1 className="text-2xl font-bold text-foreground">Bulletins scolaires</h1>
-        <p className="text-muted-foreground">Génération et consultation des bulletins</p>
+        <p className="text-muted-foreground">Calcul à partir des notes Supabase</p>
       </div>
 
-      {/* Filtres */}
+      {error ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+      ) : null}
+
       <div className="bg-card border border-border rounded-xl p-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Classe */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Classe <span className="text-danger">*</span>
@@ -142,12 +242,13 @@ export default function BulletinsPage() {
             <div className="relative">
               <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
               <select
-                value={selectedClass}
-                onChange={(e) => setSelectedClass(e.target.value)}
+                value={selectedClasseId}
+                onChange={(e) => setSelectedClasseId(e.target.value)}
+                disabled={loading}
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
               >
-                {classesData.map((classe) => (
-                  <option key={classe.id} value={classe.name}>
+                {classes.map((classe) => (
+                  <option key={classe.id} value={classe.id}>
                     {classe.name}
                   </option>
                 ))}
@@ -155,67 +256,66 @@ export default function BulletinsPage() {
             </div>
           </div>
 
-          {/* Trimestre */}
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Trimestre <span className="text-danger">*</span>
             </label>
             <select
-              value={selectedTrimestre}
-              onChange={(e) => setSelectedTrimestre(e.target.value)}
+              value={selectedTrimestreId}
+              onChange={(e) => setSelectedTrimestreId(e.target.value)}
+              disabled={loading}
               className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
             >
-              {trimestres.map((trimestre) => (
-                <option key={trimestre} value={trimestre}>
-                  {trimestre}
+              {trimestres.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.nom}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Actions */}
           <div className="flex items-end gap-3">
             <button
-              onClick={handleGenerateAllPDF}
+              type="button"
+              onClick={() => void handleGenerateAllPDF()}
               className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm"
             >
               <Download className="w-4 h-4" />
-              Exporter en PDF
+              PDF (tous)
             </button>
             <button
+              type="button"
               onClick={handleExportExcel}
               className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
             >
               <FileSpreadsheet className="w-4 h-4" />
-              Exporter en Excel
+              Excel
             </button>
           </div>
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Bulletins à générer</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{filteredStudents.length}</p>
+          <p className="text-sm text-muted-foreground">Élèves</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{loading ? "…" : bulletinStudents.length}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Moyenne de classe</p>
           <p className="text-2xl font-bold text-primary mt-1">
-            {(filteredStudents.reduce((acc, s) => acc + s.moyenne, 0) / filteredStudents.length).toFixed(2)}/20
+            {bulletinStudents.some((s) => s.notes.length > 0) ? `${moyenneClasse.toFixed(2)}/20` : "—"}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Période</p>
-          <p className="text-lg font-bold text-foreground mt-1">{selectedTrimestre}</p>
+          <p className="text-lg font-bold text-foreground mt-1">{selectedTrimestreNom || "—"}</p>
         </div>
       </div>
 
-      {/* Liste des élèves */}
       <div className="bg-card border border-border rounded-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
           <h3 className="text-lg font-semibold text-foreground">
-            Élèves - {selectedClass} ({filteredStudents.length})
+            Élèves - {selectedClassName} ({bulletinStudents.length})
           </h3>
         </div>
 
@@ -231,129 +331,139 @@ export default function BulletinsPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredStudents.map((student) => (
-                <tr key={student.id} className="border-b border-border hover:bg-accent/50 transition">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
-                        <span className="text-primary font-semibold text-sm">
-                          {student.firstName[0]}
-                          {student.lastName[0]}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-medium text-foreground">
-                          {student.firstName} {student.lastName}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span
-                      className={`text-lg font-bold ${
-                        student.moyenne >= 16
-                          ? "text-success"
-                          : student.moyenne >= 14
-                          ? "text-primary"
-                          : student.moyenne >= 10
-                          ? "text-warning"
-                          : "text-danger"
-                      }`}
-                    >
-                      {student.moyenne.toFixed(2)}/20
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className="inline-flex items-center px-3 py-1 bg-primary/10 text-primary rounded-md text-sm font-semibold">
-                      {student.rang}
-                      {student.rang === 1 ? "er" : "ème"} / {filteredStudents.length}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span
-                      className={`inline-flex items-center px-3 py-1 rounded-md text-sm font-semibold ${
-                        student.moyenne >= 10
-                          ? "bg-success/10 text-success"
-                          : "bg-danger/10 text-danger"
-                      }`}
-                    >
-                      {student.moyenne >= 10 ? "Admis" : "Non admis"}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => setSelectedStudent(student)}
-                        className="flex items-center gap-2 px-3 py-2 bg-background border border-input hover:bg-accent rounded-lg transition text-sm font-medium"
-                      >
-                        <Eye className="w-4 h-4" />
-                        Aperçu
-                      </button>
-                      <button
-                        onClick={() => handleGeneratePDF(student)}
-                        className="flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition text-sm font-medium"
-                      >
-                        <Download className="w-4 h-4" />
-                        PDF
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setWaContext(
-                            buildBulletinWhatsAppContext({
-                              studentFirstName: student.firstName,
-                              studentLastName: student.lastName,
-                              classe: student.classe,
-                              trimestre: selectedTrimestre,
-                              moyenne: student.moyenne.toFixed(2),
-                            })
-                          )
-                        }
-                        className="flex items-center gap-2 px-3 py-2 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition text-sm font-medium"
-                      >
-                        <Send className="w-4 h-4" />
-                        Notifier parent
-                      </button>
-                    </div>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                    Chargement…
                   </td>
                 </tr>
-              ))}
+              ) : bulletinStudents.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                    Aucun élève ou aucune note pour cette période.
+                  </td>
+                </tr>
+              ) : (
+                bulletinStudents.map((student) => (
+                  <tr key={student.id} className="border-b border-border hover:bg-accent/50 transition">
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center">
+                          <span className="text-primary font-semibold text-sm">
+                            {student.firstName[0]}
+                            {student.lastName[0]}
+                          </span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {student.firstName} {student.lastName}
+                          </p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span
+                        className={`text-lg font-bold ${
+                          student.moyenne >= 16
+                            ? "text-success"
+                            : student.moyenne >= 14
+                              ? "text-primary"
+                              : student.moyenne >= 10
+                                ? "text-warning"
+                                : "text-danger"
+                        }`}
+                      >
+                        {student.notes.length ? `${student.moyenne.toFixed(2)}/20` : "—"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span className="inline-flex items-center px-3 py-1 bg-primary/10 text-primary rounded-md text-sm font-semibold">
+                        {student.notes.length ? `${student.rang} / ${bulletinStudents.length}` : "—"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      <span
+                        className={`inline-flex items-center px-3 py-1 rounded-md text-sm font-semibold ${
+                          !student.notes.length
+                            ? "bg-muted text-muted-foreground"
+                            : student.moyenne >= 10
+                              ? "bg-success/10 text-success"
+                              : "bg-danger/10 text-danger"
+                        }`}
+                      >
+                        {!student.notes.length ? "Sans notes" : student.moyenne >= 10 ? "Admis" : "Non admis"}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-end gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedStudent(student)}
+                          className="flex items-center gap-2 px-3 py-2 bg-background border border-input hover:bg-accent rounded-lg transition text-sm font-medium"
+                        >
+                          <Eye className="w-4 h-4" />
+                          Aperçu
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleGeneratePDF(student)}
+                          className="flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition text-sm font-medium"
+                        >
+                          <Download className="w-4 h-4" />
+                          PDF
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setWaContext(
+                              buildBulletinWhatsAppContext({
+                                studentFirstName: student.firstName,
+                                studentLastName: student.lastName,
+                                classe: student.classe,
+                                trimestre: selectedTrimestreNom,
+                                moyenne: student.moyenne.toFixed(2),
+                              })
+                            )
+                          }
+                          className="flex items-center gap-2 px-3 py-2 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition text-sm font-medium"
+                        >
+                          <Send className="w-4 h-4" />
+                          Notifier
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal Aperçu Bulletin */}
       {selectedStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-sm"
             onClick={() => setSelectedStudent(null)}
-          ></div>
+            aria-hidden
+          />
           <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-4xl my-8">
-            {/* Header modal */}
             <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">
-                Bulletin scolaire - {selectedTrimestre}
-              </h3>
-              <button
-                onClick={() => setSelectedStudent(null)}
-                className="p-2 hover:bg-accent rounded-lg transition"
-              >
+              <h3 className="text-lg font-semibold text-foreground">Bulletin scolaire - {selectedTrimestreNom}</h3>
+              <button type="button" onClick={() => setSelectedStudent(null)} className="p-2 hover:bg-accent rounded-lg transition">
                 ✕
               </button>
             </div>
 
-            {/* Contenu bulletin */}
             <div id="bulletin-content" className="p-8 bg-white">
-              {/* En-tête */}
               <div className="text-center mb-6 pb-6 border-b-2 border-primary">
                 <h2 className="text-3xl font-bold text-primary mb-2">BULLETIN SCOLAIRE</h2>
-                <p className="text-lg text-foreground">École Primaire & Collège</p>
-                <p className="text-sm text-muted-foreground mt-1">{selectedTrimestre} - Année 2024-2025</p>
+                <p className="text-lg text-foreground">Établissement</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {selectedTrimestreNom} — {selectedClassName}
+                </p>
               </div>
 
-              {/* Infos élève */}
               <div className="grid grid-cols-2 gap-4 mb-6 bg-muted p-4 rounded-lg">
                 <div>
                   <p className="text-sm text-muted-foreground">Nom et prénom</p>
@@ -367,18 +477,20 @@ export default function BulletinsPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Moyenne générale</p>
-                  <p className="font-bold text-primary text-xl">{selectedStudent.moyenne.toFixed(2)}/20</p>
+                  <p className="font-bold text-primary text-xl">
+                    {selectedStudent.notes.length ? `${selectedStudent.moyenne.toFixed(2)}/20` : "—"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Rang</p>
                   <p className="font-semibold text-foreground">
-                    {selectedStudent.rang}
-                    {selectedStudent.rang === 1 ? "er" : "ème"} / {filteredStudents.length}
+                    {selectedStudent.notes.length
+                      ? `${selectedStudent.rang}${selectedStudent.rang === 1 ? "er" : "ème"} / ${bulletinStudents.length}`
+                      : "—"}
                   </p>
                 </div>
               </div>
 
-              {/* Notes par matière */}
               <div className="mb-6">
                 <h4 className="font-semibold text-foreground mb-3">Notes par matière</h4>
                 <table className="w-full border border-border">
@@ -391,52 +503,57 @@ export default function BulletinsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {selectedStudent.notes.map((note, index) => (
-                      <tr key={index} className="border-b border-border">
-                        <td className="px-4 py-2 text-sm font-medium">{note.matiere}</td>
-                        <td className="px-4 py-2 text-center text-sm">{note.coef}</td>
-                        <td className="px-4 py-2 text-center">
-                          <span
-                            className={`font-bold ${
-                              note.note >= 16
-                                ? "text-success"
-                                : note.note >= 14
-                                ? "text-primary"
-                                : note.note >= 10
-                                ? "text-warning"
-                                : "text-danger"
-                            }`}
-                          >
-                            {note.note.toFixed(1)}
-                          </span>
+                    {selectedStudent.notes.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-4 text-sm text-muted-foreground text-center">
+                          Aucune note saisie pour cette période.
                         </td>
-                        <td className="px-4 py-2 text-sm text-muted-foreground">{note.appreciation}</td>
                       </tr>
-                    ))}
+                    ) : (
+                      selectedStudent.notes.map((note, index) => (
+                        <tr key={`${note.matiere}-${index}`} className="border-b border-border">
+                          <td className="px-4 py-2 text-sm font-medium">{note.matiere}</td>
+                          <td className="px-4 py-2 text-center text-sm">{note.coef}</td>
+                          <td className="px-4 py-2 text-center">
+                            <span
+                              className={`font-bold ${
+                                note.note >= 16
+                                  ? "text-success"
+                                  : note.note >= 14
+                                    ? "text-primary"
+                                    : note.note >= 10
+                                      ? "text-warning"
+                                      : "text-danger"
+                              }`}
+                            >
+                              {note.note.toFixed(1)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-sm text-muted-foreground">{note.appreciation}</td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>
 
-              {/* Appréciation générale */}
               <div className="mb-6 p-4 bg-muted rounded-lg">
                 <h4 className="font-semibold text-foreground mb-2">Appréciation générale</h4>
                 <p className="text-sm text-foreground">{selectedStudent.appreciationGenerale}</p>
               </div>
 
-              {/* Footer */}
               <div className="grid grid-cols-2 gap-8 pt-6 border-t border-border">
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Signature du Directeur</p>
-                  <div className="h-16 border-b border-dashed border-border"></div>
+                  <div className="h-16 border-b border-dashed border-border" />
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground mb-2">Visa des parents</p>
-                  <div className="h-16 border-b border-dashed border-border"></div>
+                  <div className="h-16 border-b border-dashed border-border" />
                 </div>
               </div>
             </div>
 
-            {/* Actions modal */}
             <div className="px-6 py-4 border-t border-border flex flex-wrap items-center justify-end gap-3">
               <button
                 type="button"
@@ -446,7 +563,7 @@ export default function BulletinsPage() {
                       studentFirstName: selectedStudent.firstName,
                       studentLastName: selectedStudent.lastName,
                       classe: selectedStudent.classe,
-                      trimestre: selectedTrimestre,
+                      trimestre: selectedTrimestreNom,
                       moyenne: selectedStudent.moyenne.toFixed(2),
                     })
                   );
@@ -456,13 +573,15 @@ export default function BulletinsPage() {
                 Notifier parent (WhatsApp)
               </button>
               <button
+                type="button"
                 onClick={() => setSelectedStudent(null)}
                 className="px-4 py-2 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
               >
                 Fermer
               </button>
               <button
-                onClick={() => handleGeneratePDF(selectedStudent)}
+                type="button"
+                onClick={() => void handleGeneratePDF(selectedStudent)}
                 className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium"
               >
                 Télécharger PDF
@@ -478,7 +597,7 @@ export default function BulletinsPage() {
         context={waContext}
         onConfirmSend={(ctx) => {
           console.log("[MVP WhatsApp] Bulletin — envoi simulé:", ctx);
-          alert("Envoi WhatsApp simulé (branchement Meta + backend à venir).");
+          flash("Envoi WhatsApp simulé (branchement Meta + backend à venir).", "info");
         }}
       />
     </div>

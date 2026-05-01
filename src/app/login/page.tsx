@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, GraduationCap, Lock, Mail } from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
 import styles from "./page.module.css";
 
 export default function LoginPage() {
@@ -13,16 +14,35 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
     setIsLoading(true);
 
-    // TODO: Implementer l'authentification avec Supabase
-    setTimeout(() => {
-      console.log("Login:", { email, password, rememberMe });
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+
+      if (error) {
+        setErrorMessage(
+          error.message === "Invalid login credentials"
+            ? "Email ou mot de passe incorrect."
+            : error.message
+        );
+        return;
+      }
+
+      // Met à jour les cookies côté serveur (middleware / RLS)
+      router.refresh();
       router.push("/dashboard");
-    }, 1500);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -111,6 +131,12 @@ export default function LoginPage() {
             <p>Connectez-vous a votre espace School Manager.</p>
           </div>
 
+          {errorMessage ? (
+            <p className={styles.errorBanner} role="alert">
+              {errorMessage}
+            </p>
+          ) : null}
+
           <form onSubmit={handleSubmit} className={styles.form}>
             <div>
               <label className={styles.fieldLabel}>Adresse email</label>
@@ -192,7 +218,7 @@ export default function LoginPage() {
           <div className={styles.footer}>
             <p>
               Besoin d&apos;aide ?{" "}
-              <button>Contactez l&apos;administrateur</button>
+              <button type="button">Contactez l&apos;administrateur</button>
             </p>
           </div>
 

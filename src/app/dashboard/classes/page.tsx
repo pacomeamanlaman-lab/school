@@ -1,109 +1,219 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Search, Users, User, Edit, Trash2, Eye } from "lucide-react";
 import AddClassModal from "@/components/AddClassModal";
+import FlashNotice from "@/components/FlashNotice";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { createClient } from "@/lib/supabase/client";
+import { embedOne } from "@/lib/supabase/embed";
 
-// Données de démonstration
-const classesData = [
-  {
-    id: 1,
-    name: "CP - Classe A",
-    niveau: "CP",
-    effectif: 25,
-    capacite: 30,
-    titulaire: "Mme Dupont",
-    salle: "Salle 101",
-    status: "active",
-  },
-  {
-    id: 2,
-    name: "CE1 - Classe A",
-    niveau: "CE1",
-    effectif: 28,
-    capacite: 30,
-    titulaire: "M. Martin",
-    salle: "Salle 102",
-    status: "active",
-  },
-  {
-    id: 3,
-    name: "CE2 - Classe A",
-    niveau: "CE2",
-    effectif: 22,
-    capacite: 30,
-    titulaire: "Mme Bernard",
-    salle: "Salle 201",
-    status: "active",
-  },
-  {
-    id: 4,
-    name: "CM1 - Classe A",
-    niveau: "CM1",
-    effectif: 30,
-    capacite: 30,
-    titulaire: "M. Petit",
-    salle: "Salle 202",
-    status: "active",
-  },
-  {
-    id: 5,
-    name: "CM2 - Classe A",
-    niveau: "CM2",
-    effectif: 27,
-    capacite: 30,
-    titulaire: "Mme Dubois",
-    salle: "Salle 203",
-    status: "active",
-  },
-  {
-    id: 6,
-    name: "6ème - Classe A",
-    niveau: "6ème",
-    effectif: 32,
-    capacite: 35,
-    titulaire: "M. Laurent",
-    salle: "Salle 301",
-    status: "active",
-  },
-];
+type ClasseRow = {
+  id: string;
+  name: string;
+  niveau: string;
+  effectif: number;
+  capacite: number;
+  titulaire: string;
+  salle: string;
+  status: string;
+  anneeScolaire: string;
+  titulaireId: string | null;
+};
 
 export default function ClassesPage() {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState("");
-  const [classes, setClasses] = useState(classesData);
+  const [classes, setClasses] = useState<ClasseRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [titulaireOptions, setTitulaireOptions] = useState<{ value: string; label: string }[]>([]);
+  const [anneeScolaireOptions, setAnneeScolaireOptions] = useState<{ value: string; label: string }[]>([]);
+  const [anneesLoading, setAnneesLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [editingClass, setEditingClass] = useState<any>(null);
+  const [editingClass, setEditingClass] = useState<ClasseRow | null>(null);
+  const { notice, flash } = useFlashNotice();
 
-  const filteredClasses = classes.filter((classe) =>
-    classe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    classe.titulaire.toLowerCase().includes(searchTerm.toLowerCase())
+  const load = useCallback(async () => {
+    const supabase = createClient();
+    setLoading(true);
+    setError(null);
+    try {
+      setAnneesLoading(true);
+      const { data: anRows, error: anErr } = await supabase.from("annees_scolaires").select("annee").order("annee");
+      if (!anErr && anRows?.length) {
+        setAnneeScolaireOptions(
+          anRows.map((a) => ({ value: a.annee as string, label: a.annee as string }))
+        );
+      } else {
+        setAnneeScolaireOptions([]);
+      }
+      setAnneesLoading(false);
+
+      const { data: profs } = await supabase
+        .from("profiles")
+        .select("id, first_name, last_name, role")
+        .in("role", ["enseignant", "admin", "super_admin"])
+        .eq("status", "active");
+      setTitulaireOptions(
+        (profs ?? []).map((p) => ({
+          value: p.id as string,
+          label: `${p.first_name} ${p.last_name} (${p.role})`,
+        }))
+      );
+
+      const { data: clRows, error: e1 } = await supabase
+        .from("classes")
+        .select(
+          `
+          id, name, niveau, capacite, salle, status, titulaire_id,
+          annees_scolaires ( annee )
+        `
+        )
+        .eq("status", "active")
+        .order("niveau");
+
+      if (e1) throw e1;
+
+      const { data: studs } = await supabase
+        .from("students")
+        .select("id, classe_id")
+        .eq("status", "active");
+
+      const countBy = new Map<string, number>();
+      for (const s of studs ?? []) {
+        if (!s.classe_id) continue;
+        countBy.set(s.classe_id, (countBy.get(s.classe_id) ?? 0) + 1);
+      }
+
+      const titIds = [...new Set((clRows ?? []).map((c) => c.titulaire_id).filter(Boolean))] as string[];
+      const titMap = new Map<string, string>();
+      if (titIds.length) {
+        const { data: titProfs } = await supabase
+          .from("profiles")
+          .select("id, first_name, last_name")
+          .in("id", titIds);
+        for (const p of titProfs ?? []) {
+          titMap.set(p.id as string, `${p.first_name} ${p.last_name}`);
+        }
+      }
+
+      const mapped: ClasseRow[] = (clRows ?? []).map((c) => {
+        const an = embedOne<{ annee: string }>((c as { annees_scolaires?: unknown }).annees_scolaires);
+        return {
+          id: c.id as string,
+          name: c.name as string,
+          niveau: c.niveau as string,
+          capacite: Number(c.capacite),
+          effectif: countBy.get(c.id as string) ?? 0,
+          titulaire: c.titulaire_id ? titMap.get(c.titulaire_id as string) ?? "—" : "—",
+          salle: (c.salle as string | null) ?? "—",
+          status: c.status as string,
+          anneeScolaire: an?.annee ?? "—",
+          titulaireId: (c.titulaire_id as string | null) ?? null,
+        };
+      });
+      setClasses(mapped);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Erreur chargement");
+      setClasses([]);
+      setAnneesLoading(false);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const filteredClasses = useMemo(
+    () =>
+      classes.filter(
+        (classe) =>
+          classe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          classe.titulaire.toLowerCase().includes(searchTerm.toLowerCase())
+      ),
+    [classes, searchTerm]
   );
 
-  const handleAddClass = (newClass: any) => {
-    const classe = {
-      id: classes.length + 1,
-      ...newClass,
-      effectif: 0,
-      status: "active",
-    };
-    setClasses([...classes, classe]);
+  const resolveAnnee = async (supabase: ReturnType<typeof createClient>, label: string) => {
+    const { data } = await supabase.from("annees_scolaires").select("id, etablissement_id").eq("annee", label).maybeSingle();
+    return data as { id: string; etablissement_id: string } | null;
   };
 
-  const handleEditClass = (updatedClass: any) => {
-    setClasses(classes.map(c => c.id === updatedClass.id ? updatedClass : c));
-    setEditingClass(null);
-  };
-
-  const handleDeleteClass = (id: number) => {
-    if (confirm("Êtes-vous sûr de vouloir supprimer cette classe ?")) {
-      setClasses(classes.filter(c => c.id !== id));
+  const handleAddClass = async (newClass: Record<string, unknown>) => {
+    const supabase = createClient();
+    const an = await resolveAnnee(supabase, String(newClass.anneeScolaire ?? ""));
+    if (!an) {
+      flash(
+        `Année scolaire introuvable : ${newClass.anneeScolaire}. Créez-la dans les paramètres ou le seed.`,
+        "error"
+      );
+      return false;
     }
+    const tit = String(newClass.titulaire || "").trim() || null;
+    const { error: err } = await supabase.from("classes").insert({
+      etablissement_id: an.etablissement_id,
+      annee_scolaire_id: an.id,
+      name: String(newClass.name),
+      niveau: newClass.niveau as "CP" | "CE1" | "CE2" | "CM1" | "CM2" | "6ème",
+      capacite: Number(newClass.capacite) || 30,
+      salle: String(newClass.salle || "").trim() || null,
+      titulaire_id: tit,
+      status: "active",
+    });
+    if (err) {
+      flash(err.message, "error");
+      return false;
+    }
+    await load();
+    flash("Classe créée.", "success");
+  };
+
+  const handleEditClass = async (updated: Record<string, unknown> & { id: string }) => {
+    const supabase = createClient();
+    const an = await resolveAnnee(supabase, String(updated.anneeScolaire ?? ""));
+    if (!an) {
+      flash("Année scolaire introuvable.", "error");
+      return false;
+    }
+    const tit = String(updated.titulaire || "").trim() || null;
+    const { error: err } = await supabase
+      .from("classes")
+      .update({
+        name: String(updated.name),
+        niveau: updated.niveau as "CP" | "CE1" | "CE2" | "CM1" | "CM2" | "6ème",
+        capacite: Number(updated.capacite) || 30,
+        salle: String(updated.salle || "").trim() || null,
+        titulaire_id: tit,
+        annee_scolaire_id: an.id,
+        etablissement_id: an.etablissement_id,
+      })
+      .eq("id", String(updated.id));
+    if (err) {
+      flash(err.message, "error");
+      return false;
+    }
+    await load();
+    flash("Classe mise à jour.", "success");
+  };
+
+  const handleDeleteClass = async (id: string) => {
+    if (!confirm("Supprimer cette classe ? (impossible s’il reste des élèves liés)")) return;
+    const supabase = createClient();
+    const { error: err } = await supabase.from("classes").delete().eq("id", id);
+    if (err) {
+      flash(err.message, "error");
+      return;
+    }
+    await load();
+    flash("Classe supprimée.", "success");
   };
 
   const getEffectifColor = (effectif: number, capacite: number) => {
-    const percentage = (effectif / capacite) * 100;
+    const percentage = capacite ? (effectif / capacite) * 100 : 0;
     if (percentage >= 90) return "text-danger";
     if (percentage >= 75) return "text-warning";
     return "text-success";
@@ -111,13 +221,14 @@ export default function ClassesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      <FlashNotice payload={notice} />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Gestion des classes</h1>
-          <p className="text-muted-foreground">Organisation des classes par niveau</p>
+          <p className="text-muted-foreground">Données Supabase</p>
         </div>
         <button
+          type="button"
           onClick={() => setIsAddModalOpen(true)}
           className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
         >
@@ -126,7 +237,10 @@ export default function ClassesPage() {
         </button>
       </div>
 
-      {/* Recherche */}
+      {error ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
+      ) : null}
+
       <div className="bg-card border border-border rounded-xl p-4">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -140,143 +254,150 @@ export default function ClassesPage() {
         </div>
       </div>
 
-      {/* Stats rapides */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total classes</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{classes.length}</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{loading ? "…" : classes.length}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total élèves</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {classes.reduce((sum, c) => sum + c.effectif, 0)}
+            {loading ? "…" : classes.reduce((sum, c) => sum + c.effectif, 0)}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
-          <p className="text-sm text-muted-foreground">Moyenne par classe</p>
+          <p className="text-sm text-muted-foreground">Moyenne / classe</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {Math.round(classes.reduce((sum, c) => sum + c.effectif, 0) / classes.length)}
+            {loading || !classes.length
+              ? "—"
+              : Math.round(classes.reduce((s, c) => s + c.effectif, 0) / classes.length)}
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Classes pleines</p>
           <p className="text-2xl font-bold text-foreground mt-1">
-            {classes.filter((c) => c.effectif >= c.capacite).length}
+            {loading ? "…" : classes.filter((c) => c.effectif >= c.capacite).length}
           </p>
         </div>
       </div>
 
-      {/* Grille des classes */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredClasses.map((classe) => {
-          const pourcentage = Math.round((classe.effectif / classe.capacite) * 100);
-          return (
-            <div
-              key={classe.id}
-              className="bg-card border border-border rounded-xl p-6 hover:shadow-lg transition"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <h3 className="text-lg font-bold text-foreground">{classe.name}</h3>
-                  <p className="text-sm text-muted-foreground mt-1">{classe.salle}</p>
-                </div>
-                <span className="inline-flex items-center px-2.5 py-1 bg-primary/10 text-primary rounded-md text-xs font-semibold">
-                  {classe.niveau}
-                </span>
-              </div>
-
-              {/* Titulaire */}
-              <div className="flex items-center gap-2 mb-4 pb-4 border-b border-border">
-                <div className="w-10 h-10 bg-secondary/10 rounded-full flex items-center justify-center">
-                  <User className="w-5 h-5 text-secondary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Titulaire</p>
-                  <p className="text-sm font-medium text-foreground">{classe.titulaire}</p>
-                </div>
-              </div>
-
-              {/* Effectif */}
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Effectif</span>
+        {loading ? (
+          <p className="text-muted-foreground col-span-full">Chargement…</p>
+        ) : (
+          filteredClasses.map((classe) => {
+            const pourcentage = classe.capacite ? Math.round((classe.effectif / classe.capacite) * 100) : 0;
+            return (
+              <div
+                key={classe.id}
+                className="bg-card border border-border rounded-xl p-6 hover:shadow-lg transition"
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex-1">
+                    <h3 className="text-lg font-bold text-foreground">{classe.name}</h3>
+                    <p className="text-sm text-muted-foreground mt-1">{classe.salle}</p>
                   </div>
-                  <span className={`text-sm font-bold ${getEffectifColor(classe.effectif, classe.capacite)}`}>
-                    {classe.effectif}/{classe.capacite}
+                  <span className="inline-flex items-center px-2.5 py-1 bg-primary/10 text-primary rounded-md text-xs font-semibold">
+                    {classe.niveau}
                   </span>
                 </div>
-                {/* Barre de progression */}
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full transition-all ${
-                      pourcentage >= 90
-                        ? "bg-danger"
-                        : pourcentage >= 75
-                        ? "bg-warning"
-                        : "bg-success"
-                    }`}
-                    style={{ width: `${pourcentage}%` }}
-                  ></div>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">{pourcentage}% de remplissage</p>
-              </div>
 
-              {/* Actions */}
-              <div className="flex items-center gap-2 pt-4 border-t border-border">
-                <button
-                  onClick={() => router.push(`/dashboard/classes/${classe.id}`)}
-                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-accent border border-input rounded-lg transition text-sm font-medium"
-                >
-                  <Eye className="w-4 h-4" />
-                  Voir
-                </button>
-                <button
-                  onClick={() => setEditingClass(classe)}
-                  className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
-                >
-                  <Edit className="w-4 h-4 text-primary" />
-                </button>
-                <button
-                  onClick={() => handleDeleteClass(classe.id)}
-                  className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
-                >
-                  <Trash2 className="w-4 h-4 text-danger" />
-                </button>
+                <div className="flex items-center gap-2 mb-4 pb-4 border-b border-border">
+                  <div className="w-10 h-10 bg-secondary/10 rounded-full flex items-center justify-center">
+                    <User className="w-5 h-5 text-secondary" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Titulaire</p>
+                    <p className="text-sm font-medium text-foreground">{classe.titulaire}</p>
+                  </div>
+                </div>
+
+                <div className="mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">Effectif</span>
+                    </div>
+                    <span className={`text-sm font-bold ${getEffectifColor(classe.effectif, classe.capacite)}`}>
+                      {classe.effectif}/{classe.capacite}
+                    </span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full transition-all ${
+                        pourcentage >= 90 ? "bg-danger" : pourcentage >= 75 ? "bg-warning" : "bg-success"
+                      }`}
+                      style={{ width: `${Math.min(100, pourcentage)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">{pourcentage}% de remplissage</p>
+                </div>
+
+                <div className="flex items-center gap-2 pt-4 border-t border-border">
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/dashboard/classes/${classe.id}`)}
+                    className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-background hover:bg-accent border border-input rounded-lg transition text-sm font-medium"
+                  >
+                    <Eye className="w-4 h-4" />
+                    Voir
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingClass(classe)}
+                    className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+                  >
+                    <Edit className="w-4 h-4 text-primary" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteClass(classe.id)}
+                    className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+                  >
+                    <Trash2 className="w-4 h-4 text-danger" />
+                  </button>
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
-      {/* Message si aucun résultat */}
-      {filteredClasses.length === 0 && (
+      {!loading && filteredClasses.length === 0 && (
         <div className="bg-card border border-border rounded-xl p-12 text-center">
-          <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
-            <Search className="w-8 h-8 text-muted-foreground" />
-          </div>
-          <h3 className="text-lg font-semibold text-foreground mb-2">Aucune classe trouvée</h3>
-          <p className="text-muted-foreground">Essayez avec d'autres mots-clés</p>
+          <h3 className="text-lg font-semibold text-foreground mb-2">Aucune classe</h3>
+          <p className="text-muted-foreground">Créez une classe ou vérifiez le filtre.</p>
         </div>
       )}
 
-      {/* Modals */}
       <AddClassModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSubmit={handleAddClass}
+        titulaireOptions={titulaireOptions}
+        anneeScolaireOptions={anneeScolaireOptions}
+        anneesLoading={anneesLoading}
       />
 
-      {editingClass && (
+      {editingClass ? (
         <AddClassModal
-          isOpen={!!editingClass}
+          isOpen
           onClose={() => setEditingClass(null)}
           onSubmit={handleEditClass}
-          classe={editingClass}
+          classe={{
+            id: editingClass.id,
+            name: editingClass.name,
+            niveau: editingClass.niveau,
+            capacite: editingClass.capacite,
+            salle: editingClass.salle === "—" ? "" : editingClass.salle,
+            titulaire: editingClass.titulaireId ?? "",
+            anneeScolaire: editingClass.anneeScolaire,
+          }}
+          titulaireOptions={titulaireOptions}
+          anneeScolaireOptions={anneeScolaireOptions}
+          anneesLoading={anneesLoading}
         />
-      )}
+      ) : null}
     </div>
   );
 }

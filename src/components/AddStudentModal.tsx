@@ -1,21 +1,55 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import FlashNotice from "./FlashNotice";
 import Modal from "./Modal";
+import { useFlashNotice } from "@/hooks/useFlashNotice";
 import { User, Mail, Phone, Calendar, MapPin, Heart, FileText, Upload, X } from "lucide-react";
+import {
+  STUDENT_DOC_TYPE_BIRTH,
+  STUDENT_DOCUMENT_TYPE_OPTIONS,
+} from "@/lib/supabase/student-documents";
+
+const MAX_STUDENT_DOCS = 10;
+const DOC_FILE_VALID_TYPES = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+const DOC_FILE_MAX_BYTES = 5 * 1024 * 1024;
+const PHOTO_FILE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+const PHOTO_FILE_MAX_BYTES = 2 * 1024 * 1024;
+
+type DocRow = { id: string; file: File; type: string };
+
+function newDocRowId(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  return `doc-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+export type ClasseSelectOption = { id: string; name: string; niveau: string };
 
 interface AddStudentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit?: (data: any) => void;
+  /** Retourner `false` pour garder le modal ouvert (ex. erreur enregistrement). */
+  onSubmit?: (data: any) => boolean | void | Promise<boolean | void>;
   student?: any;
+  /** Classes actives Supabase (valeur du select = `id` → `classe_id`) */
+  classOptions: ClasseSelectOption[];
+  classesLoading?: boolean;
 }
 
-export default function AddStudentModal({ isOpen, onClose, onSubmit, student }: AddStudentModalProps) {
+export default function AddStudentModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  student,
+  classOptions,
+  classesLoading = false,
+}: AddStudentModalProps) {
+  const { notice, flash } = useFlashNotice();
   const [formData, setFormData] = useState({
     firstName: student?.firstName || "",
     lastName: student?.lastName || "",
     dateNaissance: student?.dateNaissance || "",
+    lieuNaissance: student?.lieuNaissance || "",
     genre: student?.genre || "M",
     classe: student?.classe || "",
     email: student?.email || "",
@@ -30,17 +64,88 @@ export default function AddStudentModal({ isOpen, onClose, onSubmit, student }: 
     parentEmail: student?.parentEmail || "",
   });
 
-  const [uploadedFile, setUploadedFile] = useState<{ name: string; preview: string } | null>(
-    student?.pieceNaissanceFile || null
-  );
+  const [docRows, setDocRows] = useState<DocRow[]>([]);
+  const [docThumbUrl, setDocThumbUrl] = useState<string | null>(null);
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    let url: string | null = null;
+    const imgFile = docRows.map((r) => r.file).find((f) => f.type.startsWith("image/"));
+    if (imgFile) {
+      url = URL.createObjectURL(imgFile);
+      setDocThumbUrl(url);
+    } else {
+      setDocThumbUrl(null);
+    }
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [docRows]);
+
+  useEffect(() => {
+    let url: string | null = null;
+    if (photoFile?.type.startsWith("image/")) {
+      url = URL.createObjectURL(photoFile);
+      setPhotoPreviewUrl(url);
+    } else {
+      setPhotoPreviewUrl(null);
+    }
+    return () => {
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [photoFile]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setDocRows([]);
+      setPhotoFile(null);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setFormData({
+      firstName: student?.firstName || "",
+      lastName: student?.lastName || "",
+      dateNaissance: student?.dateNaissance || "",
+      lieuNaissance: student?.lieuNaissance || "",
+      genre: student?.genre || "M",
+      classe: student?.classe || "",
+      email: student?.email || "",
+      phone: student?.phone || "",
+      adresse: student?.adresse || "",
+      groupeSanguin: student?.groupeSanguin || "",
+      maladiesParticulieres: student?.maladiesParticulieres || "",
+      pieceNaissance: student?.pieceNaissance || "",
+      parentName: student?.parentName || "",
+      parentPhone: student?.parentPhone || "",
+      parentPhoneSecondaire: student?.parentPhoneSecondaire || "",
+      parentEmail: student?.parentEmail || "",
+    });
+  }, [isOpen, student]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (onSubmit) {
+      const studentDocumentItems = docRows.map((r) => ({
+        file: r.file,
+        type_document: r.type,
+      }));
       const dataToSubmit = student
-        ? { ...student, ...formData, pieceNaissanceFile: uploadedFile }
-        : { ...formData, pieceNaissanceFile: uploadedFile };
-      onSubmit(dataToSubmit);
+        ? {
+            ...student,
+            ...formData,
+            studentDocumentItems,
+            profilePhotoFile: photoFile,
+          }
+        : {
+            ...formData,
+            studentDocumentItems,
+            profilePhotoFile: photoFile,
+          };
+      const keepOpen = (await onSubmit(dataToSubmit)) === false;
+      if (keepOpen) return;
     }
     onClose();
   };
@@ -49,41 +154,61 @@ export default function AddStudentModal({ isOpen, onClose, onSubmit, student }: 
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDocFilesInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (!picked.length) return;
+
+    setDocRows((prev) => {
+      const next = [...prev];
+      for (const file of picked) {
+        if (next.length >= MAX_STUDENT_DOCS) {
+          flash(`Maximum ${MAX_STUDENT_DOCS} fichiers par enregistrement.`, "error");
+          break;
+        }
+        if (!DOC_FILE_VALID_TYPES.includes(file.type)) {
+          flash(`${file.name} : format non supporté (PDF, JPG, PNG).`, "error");
+          continue;
+        }
+        if (file.size > DOC_FILE_MAX_BYTES) {
+          flash(`${file.name} : trop volumineux (max. 5 Mo).`, "error");
+          continue;
+        }
+        next.push({ id: newDocRowId(), file, type: STUDENT_DOC_TYPE_BIRTH });
+      }
+      return next;
+    });
+  };
+
+  const removeDocRow = (id: string) => {
+    setDocRows((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const setDocRowType = (id: string, type: string) => {
+    setDocRows((prev) => prev.map((r) => (r.id === id ? { ...r, type } : r)));
+  };
+
+  const handlePhotoInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      // Vérifier le type de fichier
-      const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-      if (!validTypes.includes(file.type)) {
-        alert('Format non supporté. Utilisez PDF, JPG ou PNG.');
-        return;
-      }
-
-      // Vérifier la taille (max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        alert('Fichier trop volumineux. Maximum 5MB.');
-        return;
-      }
-
-      // Créer preview avec FileReader
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setUploadedFile({
-          name: file.name,
-          preview: reader.result as string, // Base64 pour le MVP
-        });
-      };
-      reader.readAsDataURL(file);
+    e.target.value = "";
+    if (!file) return;
+    if (!PHOTO_FILE_TYPES.includes(file.type)) {
+      flash("Photo : JPG, PNG ou WebP uniquement.", "error");
+      return;
     }
+    if (file.size > PHOTO_FILE_MAX_BYTES) {
+      flash("Photo : maximum 2 Mo.", "error");
+      return;
+    }
+    setPhotoFile(file);
   };
 
-  const removeFile = () => {
-    setUploadedFile(null);
-  };
+  const clearPhoto = () => setPhotoFile(null);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={student ? "Modifier l'élève" : "Ajouter un élève"} size="lg">
       <form onSubmit={handleSubmit} className="space-y-6">
+        <FlashNotice payload={notice} />
         {/* Informations élève */}
         <div>
           <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
@@ -136,6 +261,18 @@ export default function AddStudentModal({ isOpen, onClose, onSubmit, student }: 
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-foreground mb-2">Lieu de naissance</label>
+              <input
+                type="text"
+                name="lieuNaissance"
+                value={formData.lieuNaissance}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                placeholder="Ex. Abidjan"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-foreground mb-2">
                 Genre <span className="text-danger">*</span>
               </label>
@@ -160,15 +297,21 @@ export default function AddStudentModal({ isOpen, onClose, onSubmit, student }: 
                 value={formData.classe}
                 onChange={handleChange}
                 required
-                className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                disabled={classesLoading || !classOptions.length}
+                className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <option value="">Sélectionner une classe</option>
-                <option value="CP">CP</option>
-                <option value="CE1">CE1</option>
-                <option value="CE2">CE2</option>
-                <option value="CM1">CM1</option>
-                <option value="CM2">CM2</option>
-                <option value="6ème">6ème</option>
+                <option value="">
+                  {classesLoading
+                    ? "Chargement des classes…"
+                    : classOptions.length
+                      ? "Sélectionner une classe"
+                      : "Aucune classe — créez-en une dans Classes"}
+                </option>
+                {classOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.niveau})
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -184,6 +327,31 @@ export default function AddStudentModal({ isOpen, onClose, onSubmit, student }: 
                 className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
                 placeholder="+33 6 12 34 56 78"
               />
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-foreground mb-2">Photo de l&apos;élève</label>
+              {student?.photoUrl ? (
+                <p className="text-xs text-muted-foreground mb-2">Une photo est déjà enregistrée ; choisissez un fichier pour la remplacer.</p>
+              ) : null}
+              <div className="flex flex-wrap items-center gap-3">
+                <label className="inline-flex items-center justify-center px-4 py-2 rounded-lg border border-input bg-background cursor-pointer hover:bg-accent text-sm font-medium">
+                  Choisir une image
+                  <input type="file" className="hidden" accept="image/jpeg,image/png,image/webp" onChange={handlePhotoInput} />
+                </label>
+                {photoFile ? (
+                  <>
+                    <span className="text-sm text-foreground truncate max-w-[200px]">{photoFile.name}</span>
+                    <button type="button" onClick={clearPhoto} className="text-sm text-danger hover:underline">
+                      Retirer
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              {photoPreviewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={photoPreviewUrl} alt="" className="mt-2 h-24 w-24 rounded-full object-cover border border-border" />
+              ) : null}
             </div>
           </div>
 
@@ -270,51 +438,85 @@ export default function AddStudentModal({ isOpen, onClose, onSubmit, student }: 
               />
             </div>
 
-            {/* Upload fichier */}
+            {/* Upload fichier(s) + type */}
             <div>
               <label className="block text-sm font-medium text-foreground mb-2">
-                Document (Extrait de naissance)
+                Documents joints (un type par fichier)
               </label>
 
-              {!uploadedFile ? (
-                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-input rounded-lg cursor-pointer bg-muted/30 hover:bg-muted/50 transition">
-                  <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                    <Upload className="w-8 h-8 text-muted-foreground mb-2" />
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-semibold">Cliquez pour uploader</span> ou glissez-déposez
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      PDF, JPG, PNG (max. 5MB)
-                    </p>
-                  </div>
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,.jpg,.jpeg,.png"
-                    onChange={handleFileUpload}
-                  />
-                </label>
-              ) : (
-                <div className="flex items-center justify-between p-4 bg-success/10 border border-success/20 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-5 h-5 text-success" />
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{uploadedFile.name}</p>
-                      <p className="text-xs text-muted-foreground">Fichier prêt à être enregistré</p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={removeFile}
-                    className="p-1.5 hover:bg-danger/10 rounded-lg transition text-danger"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+              <label className="flex flex-col items-center justify-center w-full min-h-[8rem] border-2 border-dashed border-input rounded-lg cursor-pointer bg-muted/30 hover:bg-muted/50 transition py-4">
+                <div className="flex flex-col items-center justify-center px-4">
+                  <Upload className="w-8 h-8 text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground text-center">
+                    <span className="font-semibold">Ajouter des fichiers</span>
+                    {docRows.length ? ` (${docRows.length}/${MAX_STUDENT_DOCS})` : null}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1 text-center">
+                    PDF, JPG, PNG — max. 5 Mo par fichier — plusieurs fichiers possibles
+                  </p>
                 </div>
-              )}
+                <input
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={handleDocFilesInput}
+                />
+              </label>
+
+              {docRows.length > 0 ? (
+                <ul className="mt-3 space-y-2">
+                  {docRows.map((row) => (
+                    <li
+                      key={row.id}
+                      className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 p-3 bg-success/10 border border-success/20 rounded-lg"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <FileText className="w-5 h-5 text-success shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground truncate">{row.file.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {(row.file.size / 1024).toFixed(0)} Ko — envoi après enregistrement
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <select
+                          value={row.type}
+                          onChange={(e) => setDocRowType(row.id, e.target.value)}
+                          className="text-sm px-2 py-1.5 rounded-lg border border-input bg-white min-w-[10rem]"
+                        >
+                          {STUDENT_DOCUMENT_TYPE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => removeDocRow(row.id)}
+                          className="p-1.5 hover:bg-danger/10 rounded-lg transition text-danger"
+                          aria-label={`Retirer ${row.file.name}`}
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+
+              {docThumbUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={docThumbUrl}
+                  alt="Aperçu (première image pièce)"
+                  className="mt-3 max-h-40 rounded-lg border border-border object-contain"
+                />
+              ) : null}
 
               <p className="text-xs text-muted-foreground mt-2">
-                📌 MVP : Fichier stocké en local (base64). Migration vers Supabase Storage en Phase 3.
+                Bucket « student-documents » — jusqu&apos;à {MAX_STUDENT_DOCS} fichiers (voir seed SQL).
               </p>
             </div>
           </div>

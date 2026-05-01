@@ -1,7 +1,5 @@
 "use client";
 
-export const TIMETABLE_TECH_CONFIG_STORAGE_KEY = "school.timetable.techConfig.v1";
-
 export const DAY_NAMES = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi"] as const;
 export type DayName = (typeof DAY_NAMES)[number];
 
@@ -100,22 +98,6 @@ function sanitizeConfig(raw: Partial<TimetableTechConfig> | null | undefined): T
     dayEndOverrides,
     breaks: raw.breaks?.length ? raw.breaks : [...DEFAULT_TIMETABLE_TECH_CONFIG.breaks],
   };
-}
-
-export function loadTimetableTechConfigFromStorage(): TimetableTechConfig {
-  if (typeof window === "undefined") return { ...DEFAULT_TIMETABLE_TECH_CONFIG };
-  try {
-    const raw = window.localStorage.getItem(TIMETABLE_TECH_CONFIG_STORAGE_KEY);
-    if (!raw) return { ...DEFAULT_TIMETABLE_TECH_CONFIG };
-    return sanitizeConfig(JSON.parse(raw) as Partial<TimetableTechConfig>);
-  } catch {
-    return { ...DEFAULT_TIMETABLE_TECH_CONFIG };
-  }
-}
-
-export function saveTimetableTechConfigToStorage(config: TimetableTechConfig): void {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(TIMETABLE_TECH_CONFIG_STORAGE_KEY, JSON.stringify(config));
 }
 
 export function generateTimeSlots(config: TimetableTechConfig): GeneratedTimeSlot[] {
