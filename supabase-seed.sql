@@ -163,9 +163,22 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- 5. PROFILS UTILISATEURS (mêmes id que section 0 — auth.users)
--- Si `profiles.role` est un ENUM PostgreSQL, étendre le type avant d’insérer de nouvelles valeurs, par ex. :
---   ALTER TYPE public.<nom_du_type_role> ADD VALUE IF NOT EXISTS 'secretaire';
---   (idem pour 'comptable', 'surveillant' — PG 15+ pour IF NOT EXISTS sur ADD VALUE)
+-- Si `profiles.role` est un ENUM PostgreSQL (colonne de ce type), utiliser ALTER TYPE … ADD VALUE au lieu du CHECK ci-dessous.
+
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
+
+ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check CHECK (
+  role IN (
+    'super_admin',
+    'admin',
+    'enseignant',
+    'secretaire',
+    'comptable',
+    'surveillant',
+    'parent',
+    'eleve'
+  )
+);
 
 -- Admin
 INSERT INTO profiles (id, role, first_name, last_name, email, phone, status)
@@ -318,6 +331,44 @@ WHERE NOT EXISTS (
   WHERE e.classe_id = v.classe_id AND e.matiere_id = v.matiere_id AND e.jour = v.jour
     AND e.heure_debut = v.heure_debut::time AND e.heure_fin = v.heure_fin::time
 );
+
+-- ---------------------------------------------------------------------------
+-- 16. RLS dev sur les tables métier (même contenu que `supabase-rls-permissive-dev.sql`)
+-- ---------------------------------------------------------------------------
+DO $rls$
+DECLARE
+  t text;
+  pol text;
+  tables text[] := ARRAY[
+    'absences',
+    'annees_scolaires',
+    'classes',
+    'emplois_du_temps',
+    'frais_scolaires',
+    'matieres',
+    'notes',
+    'paiements',
+    'parents',
+    'profiles',
+    'staff',
+    'student_parents',
+    'students',
+    'trimestres'
+  ];
+BEGIN
+  FOREACH t IN ARRAY tables
+  LOOP
+    pol := 'school_dev_' || t;
+    EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', pol, t);
+    EXECUTE format(
+      'CREATE POLICY %I ON public.%I FOR ALL TO authenticated USING (true) WITH CHECK (true)',
+      pol,
+      t
+    );
+  END LOOP;
+END
+$rls$;
 
 -- ---------------------------------------------------------------------------
 -- Production : resserrer les RLS (ce seed reste volontairement permissif pour le dev).

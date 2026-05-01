@@ -285,6 +285,23 @@ export default function ComptabilitePage() {
                 </tr>
               </thead>
               <tbody>
+                {!loading && filteredFrais.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-10 text-center text-muted-foreground text-sm">
+                      {fraisScolaires.length === 0 ? (
+                        <p>
+                          Aucune donnée : soit le seed n’a pas créé de lignes dans{" "}
+                          <code className="text-xs bg-muted px-1 rounded">frais_scolaires</code>, soit Supabase RLS
+                          bloque la lecture pour ce compte. En dev, exécutez le script{" "}
+                          <code className="text-xs bg-muted px-1 rounded">supabase-rls-permissive-dev.sql</code> dans
+                          le SQL Editor.
+                        </p>
+                      ) : (
+                        <p>Aucun résultat pour cette recherche ou ce filtre.</p>
+                      )}
+                    </td>
+                  </tr>
+                ) : null}
                 {filteredFrais.map((frais) => {
                   const reste = frais.montantTotal - frais.montantPaye;
                   const pourcentage = frais.montantTotal ? (frais.montantPaye / frais.montantTotal) * 100 : 0;
