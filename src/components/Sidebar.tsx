@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { isActiveMenuHref, menuHrefSetForProfileRole } from "@/lib/dashboard-nav-policy";
 import {
   LayoutDashboard,
   Users,
@@ -79,9 +82,63 @@ const menuItems = [
   },
 ];
 
+function roleShortLabelFr(role: string | null): string {
+  if (!role) return "Utilisateur";
+  const m: Record<string, string> = {
+    super_admin: "Super admin",
+    admin: "Administrateur",
+    enseignant: "Enseignant",
+    secretaire: "Secrétaire",
+    comptable: "Comptable",
+    surveillant: "Surveillant",
+    parent: "Parent",
+    eleve: "Élève",
+  };
+  return m[role] ?? role;
+}
+
+function userInitials(firstName: string, lastName: string, email: string): string {
+  const a = firstName.trim()[0];
+  const b = lastName.trim()[0];
+  if (a && b) return `${a}${b}`.toUpperCase();
+  const e = email.trim()[0];
+  return e ? e.toUpperCase() : "?";
+}
+
+function displayName(firstName: string, lastName: string, email: string): string {
+  const n = `${firstName} ${lastName}`.trim();
+  return n || email || "Compte";
+}
+
 export default function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const router = useRouter();
+  const { profile, loading } = useDashboardProfile();
+
+  const visibleMenu = useMemo(() => {
+    if (loading) return menuItems;
+    const allowed = menuHrefSetForProfileRole(profile?.role ?? null);
+    return menuItems.filter((item) => allowed.has(item.href));
+  }, [loading, profile?.role]);
+
+  const handleLogout = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.replace("/login");
+  };
+
+  const initials = userInitials(
+    profile?.firstName ?? "",
+    profile?.lastName ?? "",
+    profile?.email ?? ""
+  );
+  const nameLine = displayName(
+    profile?.firstName ?? "",
+    profile?.lastName ?? "",
+    profile?.email ?? ""
+  );
+  const roleLine = roleShortLabelFr(profile?.role ?? null);
 
   return (
     <aside
@@ -125,8 +182,8 @@ export default function Sidebar() {
 
       {/* Navigation — min-h-0 pour que le pied du menu reste dans l’écran */}
       <nav className="flex-1 min-h-0 p-3 space-y-1 overflow-y-auto">
-        {menuItems.map((item) => {
-          const isActive = pathname === item.href;
+        {visibleMenu.map((item) => {
+          const isActive = isActiveMenuHref(pathname, item.href);
           const Icon = item.icon;
 
           return (
@@ -153,12 +210,13 @@ export default function Sidebar() {
           <div className="flex flex-col items-center gap-2">
             <div
               className="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0"
-              title="Administrateur"
+              title={nameLine}
             >
-              <span className="text-primary font-semibold text-sm">AD</span>
+              <span className="text-primary font-semibold text-sm">{loading ? "…" : initials}</span>
             </div>
             <button
               type="button"
+              onClick={() => void handleLogout()}
               className="p-2 text-danger hover:bg-danger/10 rounded-lg transition"
               title="Déconnexion"
             >
@@ -169,14 +227,20 @@ export default function Sidebar() {
           <div className="space-y-2">
             <div className="flex items-center gap-3 px-3 py-2 bg-accent rounded-lg">
               <div className="w-9 h-9 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-primary font-semibold text-sm">AD</span>
+                <span className="text-primary font-semibold text-sm">{loading ? "…" : initials}</span>
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-foreground text-sm truncate">Administrateur</p>
-                <p className="text-xs text-muted-foreground truncate">admin@ecole.com</p>
+                <p className="font-medium text-foreground text-sm truncate">{loading ? "Chargement…" : nameLine}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {loading ? "…" : `${roleLine} · ${profile?.email ?? ""}`}
+                </p>
               </div>
             </div>
-            <button className="w-full flex items-center gap-3 px-3 py-2 text-danger hover:bg-danger/10 rounded-lg transition">
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="w-full flex items-center gap-3 px-3 py-2 text-danger hover:bg-danger/10 rounded-lg transition"
+            >
               <LogOut className="w-5 h-5" />
               <span className="font-medium">Déconnexion</span>
             </button>
