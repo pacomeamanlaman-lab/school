@@ -19,6 +19,27 @@ export type DossierFinancier = {
   dernierPaiement: string | null;
 };
 
+/** Priorité compta : impayés → partiels → payés ; puis reste décroissant ; puis nom. */
+const STATUT_TRI_ORDRE: Record<string, number> = {
+  impaye: 0,
+  partiel: 1,
+  paye: 2,
+};
+
+function compareDossiersFinanciers(a: DossierFinancier, b: DossierFinancier): number {
+  const oa = STATUT_TRI_ORDRE[a.statutPaiement] ?? 99;
+  const ob = STATUT_TRI_ORDRE[b.statutPaiement] ?? 99;
+  if (oa !== ob) return oa - ob;
+  const resteA = a.montantTotal - a.montantPaye;
+  const resteB = b.montantTotal - b.montantPaye;
+  if (resteB !== resteA) return resteB - resteA;
+  return a.studentName.localeCompare(b.studentName, "fr", { sensitivity: "base" });
+}
+
+function trierDossiersFinanciers(rows: DossierFinancier[]): DossierFinancier[] {
+  return [...rows].sort(compareDossiersFinanciers);
+}
+
 export default function ComptabilitePage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFilter, setSelectedFilter] = useState("all");
@@ -67,7 +88,7 @@ export default function ComptabilitePage() {
           dernierPaiement: lastByFrais.get(f.id as string) ?? null,
         };
       });
-      setFraisScolaires(list);
+      setFraisScolaires(trierDossiersFinanciers(list));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur");
       setFraisScolaires([]);
@@ -81,11 +102,12 @@ export default function ComptabilitePage() {
   }, [load]);
 
   const filteredFrais = useMemo(() => {
-    return fraisScolaires.filter((frais) => {
+    const filtered = fraisScolaires.filter((frais) => {
       const matchSearch = frais.studentName.toLowerCase().includes(searchTerm.toLowerCase());
       const matchFilter = selectedFilter === "all" || frais.statutPaiement === selectedFilter;
       return matchSearch && matchFilter;
     });
+    return trierDossiersFinanciers(filtered);
   }, [fraisScolaires, searchTerm, selectedFilter]);
 
   const stats = useMemo(() => {
@@ -258,7 +280,7 @@ export default function ComptabilitePage() {
               className="pl-10 pr-8 py-2.5 bg-white border border-input rounded-lg appearance-none cursor-pointer min-w-[180px]"
             >
               <option value="all">Tous les statuts</option>
-              <option value="paye">Payé</option>
+              <option value="paye">Soldé</option>
               <option value="partiel">Partiel</option>
               <option value="impaye">Non payé</option>
             </select>
@@ -326,7 +348,7 @@ export default function ComptabilitePage() {
                         </div>
                       </td>
                       <td className={`px-6 py-4 font-semibold ${reste === 0 ? "text-success" : "text-warning"}`}>
-                        {reste.toLocaleString()} FCFA
+                        {reste === 0 ? "Soldé" : `${reste.toLocaleString()} FCFA`}
                       </td>
                       <td className="px-6 py-4">
                         <span
