@@ -64,7 +64,7 @@ export default function AnneeScolaireSettingsPage() {
     }
 
     if (!anneeRow) {
-      setError("Aucune année scolaire en base.");
+      setError("Aucune année scolaire configurée.");
       setLoading(false);
       return;
     }
@@ -199,7 +199,7 @@ export default function AnneeScolaireSettingsPage() {
           Retour aux parametres
         </Link>
         <h1 className="mt-2 text-2xl font-bold text-foreground">Année scolaire</h1>
-        <p className="text-muted-foreground">Tables `annees_scolaires` et `trimestres`</p>
+        <p className="text-muted-foreground">Période active et découpage en trimestres</p>
       </div>
 
       {error ? (
@@ -268,16 +268,16 @@ export default function AnneeScolaireSettingsPage() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-info" />
+        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 min-w-0">
+            <Calendar className="w-5 h-5 shrink-0 text-info" />
             Trimestres
           </h3>
           <button
             type="button"
             onClick={() => setIsAddTrimestreOpen(true)}
             disabled={loading || !anneeId}
-            className="flex items-center gap-2 px-3 py-2 bg-info/10 hover:bg-info/20 text-info rounded-lg transition font-medium border border-info/20 disabled:opacity-50"
+            className="flex w-full shrink-0 items-center justify-center gap-2 px-3 py-2 bg-info/10 hover:bg-info/20 text-info rounded-lg transition font-medium border border-info/20 disabled:opacity-50 sm:w-auto"
           >
             <Plus className="w-4 h-4" />
             Ajouter

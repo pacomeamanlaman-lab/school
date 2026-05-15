@@ -49,3 +49,18 @@ body {
   color: var(--foreground);
   font-family: var(--font-poppins), system-ui, sans-serif;
 }
+
+/* Panneau drawer mobile : slide fiable (hors utilitaires transform Tailwind) */
+.mobile-nav-drawer-panel {
+  transform: translate3d(-100%, 0, 0);
+  transition: transform 280ms cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: transform;
+}
+.mobile-nav-drawer-panel[data-open="true"] {
+  transform: translate3d(0, 0, 0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav-drawer-panel {
+    transition-duration: 1ms;
+  }
+}

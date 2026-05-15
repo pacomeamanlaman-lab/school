@@ -355,7 +355,7 @@ export default function GestionEmploisDuTempsPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Gestion des emplois du temps</h1>
-          <p className="text-muted-foreground">Enregistrement Supabase (emplois_du_temps)</p>
+          <p className="text-muted-foreground">Édition de la grille hebdomadaire</p>
         </div>
         <button
           type="button"
@@ -444,8 +444,7 @@ export default function GestionEmploisDuTempsPage() {
       <div className="bg-info/10 border border-info/20 rounded-xl p-4">
         <p className="text-sm font-medium text-foreground">Créneaux</p>
         <p className="text-xs text-muted-foreground mt-1">
-          Les horaires (début/fin des cases) suivent la configuration technique dans Paramètres. La colonne salle est
-          locale (non persistée en base sur ce schéma).
+          Les horaires des cases suivent la configuration dans Paramètres. La salle reste indicative sur cette vue.
         </p>
       </div>
 
@@ -538,11 +537,15 @@ export default function GestionEmploisDuTempsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setSelectedSlot(null)} aria-hidden />
           <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground min-w-0 pr-2">
                 {emploiDuTemps[selectedSlot.jour]?.[selectedSlot.creneau] ? "Modifier" : "Ajouter"} un cours
               </h3>
-              <button type="button" onClick={() => setSelectedSlot(null)} className="p-2 hover:bg-accent rounded-lg transition">
+              <button
+                type="button"
+                onClick={() => setSelectedSlot(null)}
+                className="self-end p-2 hover:bg-accent rounded-lg transition sm:self-auto"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>

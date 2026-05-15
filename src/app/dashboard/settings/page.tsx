@@ -11,8 +11,8 @@ export default function SettingsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-xl p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0">
               <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <School className="w-5 h-5 text-primary" />
                 Établissement
@@ -23,7 +23,7 @@ export default function SettingsPage() {
             </div>
             <Link
               href="/dashboard/settings/etablissement"
-              className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition whitespace-nowrap"
+              className="inline-flex w-full shrink-0 items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition sm:w-auto whitespace-nowrap"
             >
               Ouvrir
             </Link>
@@ -31,8 +31,8 @@ export default function SettingsPage() {
         </div>
 
         <div className="bg-card border border-border rounded-xl p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0">
               <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-secondary" />
                 Année scolaire
@@ -43,7 +43,7 @@ export default function SettingsPage() {
             </div>
             <Link
               href="/dashboard/settings/annee-scolaire"
-              className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition whitespace-nowrap"
+              className="inline-flex w-full shrink-0 items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition sm:w-auto whitespace-nowrap"
             >
               Ouvrir
             </Link>
@@ -52,19 +52,19 @@ export default function SettingsPage() {
       </div>
 
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Clock3 className="w-5 h-5 text-primary" />
               Configuration technique des emplois du temps
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Définis les horaires, pauses/récréations, jours actifs et demi-journées (MVP).
+              Définis les horaires, pauses, récréations, jours actifs et demi-journées.
             </p>
           </div>
           <Link
             href="/dashboard/settings/timetable-config"
-            className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition"
+            className="inline-flex w-full shrink-0 items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition sm:w-auto"
           >
             Configurer l&apos;EDT
           </Link>
@@ -73,8 +73,8 @@ export default function SettingsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-card border border-border rounded-xl p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0">
               <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <Coins className="w-5 h-5 text-warning" />
                 Frais scolaires par niveau
@@ -85,7 +85,7 @@ export default function SettingsPage() {
             </div>
             <Link
               href="/dashboard/settings/frais-scolaires"
-              className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition whitespace-nowrap"
+              className="inline-flex w-full shrink-0 items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition sm:w-auto whitespace-nowrap"
             >
               Ouvrir
             </Link>
@@ -93,8 +93,8 @@ export default function SettingsPage() {
         </div>
 
         <div className="bg-card border border-border rounded-xl p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+            <div className="min-w-0">
               <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-success" />
                 Matières &amp; coefficients
@@ -105,7 +105,7 @@ export default function SettingsPage() {
             </div>
             <Link
               href="/dashboard/settings/matieres-coefficients"
-              className="inline-flex items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition whitespace-nowrap"
+              className="inline-flex w-full shrink-0 items-center justify-center rounded-lg border border-input bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-accent transition sm:w-auto whitespace-nowrap"
             >
               Ouvrir
             </Link>

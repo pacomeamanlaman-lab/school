@@ -259,7 +259,7 @@ export default function DashboardPage() {
         const presenceHint =
           totalStudents > 0 && nAll > 0
             ? `Moy. notes (${nAll} saisies)`
-            : "Synchronisé avec Supabase";
+            : "Données à jour";
 
         if (!cancelled) {
           setData({
@@ -316,7 +316,7 @@ export default function DashboardPage() {
         value: d.avgGlobal != null ? `${d.avgGlobal}/20` : "—",
         icon: Award,
         color: "bg-success/10 text-success",
-        trend: "Sur les notes en base",
+        trend: "Sur les notes saisies",
       },
       {
         title: "Indicateur",
@@ -348,7 +348,7 @@ export default function DashboardPage() {
     activities: [
       {
         action: loadError ? "Erreur" : "Chargement…",
-        detail: loadError ?? "Récupération des données Supabase",
+        detail: loadError ?? "Chargement des données",
         time: "",
       },
     ] as ActivityRow[],
@@ -359,7 +359,7 @@ export default function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Tableau de bord</h1>
-          <p className="text-muted-foreground">Vue d&apos;ensemble (données Supabase)</p>
+          <p className="text-muted-foreground">Vue d&apos;ensemble de l&apos;établissement</p>
         </div>
       </div>
 
@@ -369,7 +369,7 @@ export default function DashboardPage() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <button
           type="button"
           onClick={() => router.push("/dashboard/absences")}
@@ -413,7 +413,7 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {statsCards.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -581,7 +581,7 @@ export default function DashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Aucune absence &quot;absent&quot; en base.</p>
+            <p className="text-sm text-muted-foreground">Aucune absence « absent » enregistrée.</p>
           )}
         </div>
       </div>

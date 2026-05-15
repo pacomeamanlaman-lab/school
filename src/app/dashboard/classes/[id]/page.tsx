@@ -147,7 +147,7 @@ export default function ClassDetailPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Détails de la classe</h1>
-          <p className="text-muted-foreground">Supabase</p>
+          <p className="text-muted-foreground">Effectif, emploi du temps et élèves de la classe</p>
         </div>
         <button
           type="button"

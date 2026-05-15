@@ -99,7 +99,12 @@ export default function StaffPage() {
           email: (p.email as string) ?? "",
           phone: (p.phone as string | null) ?? null,
           role: p.role as string,
-        }));
+        }))
+        .sort((a, b) =>
+          `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`, "fr", {
+            sensitivity: "base",
+          })
+        );
       setLinkableProfiles(linkable);
 
       const rows: StaffRow[] = (data ?? []).map((r) => {
@@ -290,10 +295,10 @@ export default function StaffPage() {
   return (
     <div className="space-y-6">
       <FlashNotice payload={notice} />
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
           <h1 className="text-2xl font-bold text-foreground">Gestion du personnel</h1>
-          <p className="text-muted-foreground">Table staff + profils Supabase</p>
+          <p className="text-muted-foreground">Enseignants, administration et personnel de l&apos;établissement</p>
         </div>
         {canStaffWrite ? (
           <button
@@ -302,7 +307,7 @@ export default function StaffPage() {
               setEditingStaff(null);
               setStaffModalOpen(true);
             }}
-            className="flex items-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg font-medium hover:bg-primary/90 shadow-lg shadow-primary/20"
+            className="flex w-full shrink-0 items-center justify-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg font-medium hover:bg-primary/90 shadow-lg shadow-primary/20 sm:w-auto"
           >
             <Plus className="w-5 h-5" />
             Ajouter
@@ -344,7 +349,7 @@ export default function StaffPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Total</p>
           <p className="text-2xl font-bold text-foreground mt-1">{loading ? "…" : staff.length}</p>

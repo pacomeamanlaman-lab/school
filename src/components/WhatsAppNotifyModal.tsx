@@ -8,7 +8,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   context: WhatsAppNotifyContext | null;
-  /** MVP : pas d’appel Meta ; appelé au clic « Envoyer » */
+  /** Pas d’appel réseau ; appelé au clic « Envoyer » */
   onConfirmSend?: (ctx: WhatsAppNotifyContext) => void;
 };
 

@@ -83,7 +83,7 @@ interface AddStaffModalProps {
   /** Retourner `false` pour garder le modal ouvert. */
   onSubmit?: (data: any) => boolean | void | Promise<boolean | void>;
   staff?: any;
-  /** Profils sans fiche `staff` — obligatoire pour l’ajout. */
+  /** Profils sans fiche `staff` — le premier (tri nom) est lié automatiquement à l’ajout (sélecteur masqué). */
   linkableProfiles?: LinkableProfileOption[];
 }
 
@@ -174,6 +174,18 @@ export default function AddStaffModal({
     }
   }, [staff, isOpen]);
 
+  /** Lier automatiquement le premier profil éligible (UI du choix masquée). */
+  useEffect(() => {
+    if (!isOpen || staff) return;
+    if (linkableProfiles.length === 0) {
+      setLinkProfileId("");
+      return;
+    }
+    setLinkProfileId((prev) =>
+      prev && linkableProfiles.some((p) => p.id === prev) ? prev : linkableProfiles[0].id
+    );
+  }, [isOpen, staff, linkableProfiles]);
+
   useEffect(() => {
     if (!isOpen || staff || !linkProfileId || !linkableProfiles.length) return;
     const p = linkableProfiles.find((x) => x.id === linkProfileId);
@@ -210,31 +222,12 @@ export default function AddStaffModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title={staff ? "Modifier le membre du personnel" : "Ajouter un membre du personnel"} size="lg">
       <form onSubmit={handleSubmit} className="space-y-6">
-        {!staff ? (
+        {!staff && linkableProfiles.length === 0 ? (
           <div className="rounded-lg border border-border bg-muted/40 p-4">
-            <label className="block text-sm font-medium text-foreground mb-2">
-              Compte utilisateur (profil) à lier <span className="text-danger">*</span>
-            </label>
-            {linkableProfiles.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aucun profil disponible : tous les comptes éligibles ont déjà une fiche staff, ou créez des utilisateurs dans
-                Supabase Auth + <code className="text-xs">profiles</code>.
-              </p>
-            ) : (
-              <select
-                value={linkProfileId}
-                onChange={(e) => setLinkProfileId(e.target.value)}
-                required
-                className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
-              >
-                <option value="">Choisir un profil…</option>
-                {linkableProfiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.first_name} {p.last_name} — {p.email} ({p.role})
-                  </option>
-                ))}
-              </select>
-            )}
+            <p className="text-sm text-muted-foreground">
+              Aucun compte disponible pour une nouvelle fiche : tous les profils staff ont déjà une ligne personnel, ou
+              invitez d&apos;abord un utilisateur avec un rôle staff.
+            </p>
           </div>
         ) : null}
 
@@ -424,8 +417,9 @@ export default function AddStaffModal({
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">Information</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Ajout : choisir un profil Auth déjà présent (sans ligne <code className="text-xs">staff</code>), compléter la fiche
-                puis enregistrement. Modification : met à jour le profil et la ligne <code className="text-xs">staff</code>.
+                Ajout : la fiche est liée au prochain compte staff sans ligne <code className="text-xs">staff</code> (ordre
+                alphabétique), complétez les champs puis enregistrez. Modification : met à jour le profil et la ligne{" "}
+                <code className="text-xs">staff</code>.
               </p>
             </div>
           </div>

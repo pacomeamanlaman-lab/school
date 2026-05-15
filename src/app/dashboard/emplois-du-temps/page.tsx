@@ -201,16 +201,16 @@ export default function EmploisDuTempsPage() {
       <FlashNotice payload={notice} />
       <div>
         <h1 className="text-2xl font-bold text-foreground">Emplois du temps</h1>
-        <p className="text-muted-foreground">Lecture Supabase (emplois_du_temps) — horaires : Paramètres</p>
+        <p className="text-muted-foreground">Grille hebdomadaire par classe — horaires dans Paramètres</p>
       </div>
 
       {error ? (
         <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
       ) : null}
 
-      <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-end gap-4 flex-wrap">
-          <div className="flex-1 min-w-[200px]">
+      <div className="bg-card border border-border rounded-xl p-4 sm:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-end md:gap-4">
+          <div className="flex-1 min-w-0 md:min-w-[200px]">
             <label className="block text-sm font-medium text-foreground mb-2">
               Classe <span className="text-danger">*</span>
             </label>
@@ -234,7 +234,7 @@ export default function EmploisDuTempsPage() {
           <button
             type="button"
             onClick={() => router.push("/dashboard/emplois-du-temps/gestion")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
+            className="flex w-full shrink-0 items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20 md:w-auto"
           >
             <Edit className="w-4 h-4" />
             Gérer l&apos;emploi du temps
@@ -242,7 +242,7 @@ export default function EmploisDuTempsPage() {
           <button
             type="button"
             onClick={() => void handleExport()}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm"
+            className="flex w-full shrink-0 items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm md:w-auto"
           >
             <Download className="w-4 h-4" />
             Exporter en PDF
@@ -250,7 +250,7 @@ export default function EmploisDuTempsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Heures/semaine (grille)</p>
           <p className="text-2xl font-bold text-foreground mt-1">{totalWeeklyHours}</p>
@@ -270,9 +270,11 @@ export default function EmploisDuTempsPage() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-foreground">Emploi du temps - {selectedClassName}</h3>
-          <div className="flex items-center gap-2">
+        <div className="px-4 py-4 sm:px-6 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-semibold text-foreground min-w-0">
+            Emploi du temps - {selectedClassName}
+          </h3>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Clock className="w-4 h-4 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">Créneaux techniques locaux</span>
           </div>

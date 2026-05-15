@@ -176,7 +176,7 @@ export default function StaffDetailPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Fiche personnel</h1>
-          <p className="text-muted-foreground">Supabase</p>
+          <p className="text-muted-foreground">Fiche membre du personnel</p>
         </div>
         <button
           type="button"

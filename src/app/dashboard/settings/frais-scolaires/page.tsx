@@ -107,7 +107,7 @@ export default function FraisScolairesSettingsPage() {
       setError(e);
       return;
     }
-    flash("Configuration enregistrée dans Supabase.", "success");
+    flash("Configuration enregistrée.", "success");
   };
 
   const handleAddFraisToDraft = () => {
@@ -156,7 +156,7 @@ export default function FraisScolairesSettingsPage() {
     setIsAddFraisOpen(false);
     const { error: e } = await persistFrais(merged);
     if (e) setError(e);
-    else flash("Ajouts enregistrés dans Supabase.", "success");
+    else flash("Ajouts enregistrés.", "success");
   };
 
   const closeAddFraisModal = () => {
@@ -167,20 +167,20 @@ export default function FraisScolairesSettingsPage() {
   return (
     <div className="space-y-6">
       <FlashNotice payload={notice} />
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+        <div className="min-w-0">
           <Link href="/dashboard/settings" className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
             <ArrowLeft className="h-4 w-4" />
             Retour aux parametres
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-foreground">Frais scolaires par niveau</h1>
-          <p className="text-muted-foreground">`etablissements.settings.fraisParNiveau`</p>
+          <p className="text-muted-foreground">Montants par niveau et cycle</p>
         </div>
         <button
           type="button"
           disabled={saving || !etablissementId}
           onClick={() => void handleSaveFrais()}
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-medium text-white hover:bg-primary/90 disabled:opacity-50"
+          className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 font-medium text-white hover:bg-primary/90 disabled:opacity-50 sm:w-auto"
         >
           <Save className="h-4 w-4" />
           {saving ? "Enregistrement…" : "Enregistrer"}
@@ -192,9 +192,9 @@ export default function FraisScolairesSettingsPage() {
       ) : null}
 
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-            <Coins className="w-5 h-5 text-warning" />
+        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <h3 className="text-lg font-semibold text-foreground flex items-center gap-2 min-w-0">
+            <Coins className="w-5 h-5 shrink-0 text-warning" />
             Frais par niveau
           </h3>
           <button
@@ -205,7 +205,7 @@ export default function FraisScolairesSettingsPage() {
               setFraisDraftQueue([]);
               setIsAddFraisOpen(true);
             }}
-            className="inline-flex items-center gap-2 rounded-lg border border-success/20 bg-success/10 px-4 py-2.5 font-medium text-success hover:bg-success/20"
+            className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-success/20 bg-success/10 px-4 py-2.5 font-medium text-success hover:bg-success/20 sm:w-auto"
           >
             <Plus className="h-4 w-4" />
             Ajouter niveau

@@ -36,7 +36,7 @@ export default function EtablissementSettingsPage() {
       return;
     }
     if (!row) {
-      setError("Aucun établissement en base. Exécutez le script de seed.");
+      setError("Aucun établissement configuré. Contactez l'administrateur.");
       setLoading(false);
       return;
     }
@@ -86,7 +86,7 @@ export default function EtablissementSettingsPage() {
       }
       if (!data) {
         setError(
-          "Aucune ligne enregistrée (souvent: politique RLS sur etablissements qui bloque UPDATE). Vérifiez dans Supabase que l’utilisateur connecté a le droit de modifier cette table."
+          "Enregistrement impossible : vérifiez vos droits ou contactez l'administrateur."
         );
         return;
       }
@@ -101,7 +101,7 @@ export default function EtablissementSettingsPage() {
         directeur: (data.directeur as string | null) ?? "",
       });
       setError(null);
-      flash("Modifications enregistrées en base (réponse serveur vérifiée).", "success");
+      flash("Modifications enregistrées.", "success");
     } finally {
       setSaving(false);
     }
@@ -115,7 +115,7 @@ export default function EtablissementSettingsPage() {
           Retour aux parametres
         </Link>
         <h1 className="mt-2 text-2xl font-bold text-foreground">Établissement</h1>
-        <p className="text-muted-foreground">Table Supabase `etablissements`</p>
+        <p className="text-muted-foreground">Identité, coordonnées et direction de l&apos;établissement</p>
       </div>
 
       {error ? (
@@ -226,7 +226,7 @@ export default function EtablissementSettingsPage() {
               placeholder="https://..."
               className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
             />
-            <p className="text-xs text-muted-foreground mt-1">Colonne `site_web` (ajoutée par le seed / ALTER).</p>
+            <p className="text-xs text-muted-foreground mt-1">Adresse du site web de l&apos;établissement (optionnel).</p>
           </div>
         </div>
       </div>

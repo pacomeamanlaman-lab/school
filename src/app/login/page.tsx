@@ -163,7 +163,7 @@ export default function LoginPage() {
           {DEMO_LOGIN_AUTOFILL_ENABLED ? (
             <div className={styles.demoAutofill}>
               <p className={styles.demoAutofillHint}>
-                Choisissez un profil seed pour préremplir email et mot de passe (tests uniquement).
+                Choisissez un profil de démonstration pour préremplir l&apos;email et le mot de passe.
               </p>
               <label htmlFor="demo-login-profile" className="sr-only">
                 Profil démo
@@ -270,7 +270,7 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <p className={styles.version}>School Manager v1.0 - MVP</p>
+          <p className={styles.version}>School Manager</p>
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useDashboardProfile } from "@/hooks/useDashboardProfile";
 import { isActiveMenuHref, menuHrefSetForProfileRole } from "@/lib/dashboard-nav-policy";
+import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
   Users,
@@ -23,9 +24,18 @@ import {
   UsersRound,
   Coins,
   X,
+  UserPlus,
 } from "lucide-react";
 
-const menuItems = [
+type NavMenuItem = {
+  title: string;
+  icon: LucideIcon;
+  href: string;
+  /** Si true : visible uniquement pour `profiles.role === "super_admin"`. */
+  superAdminOnly?: boolean;
+};
+
+const menuItems: NavMenuItem[] = [
   { title: "Dashboard", icon: LayoutDashboard, href: "/dashboard" },
   { title: "Élèves", icon: Users, href: "/dashboard/students" },
   { title: "Classes", icon: School, href: "/dashboard/classes" },
@@ -36,8 +46,9 @@ const menuItems = [
   { title: "Notes", icon: ClipboardList, href: "/dashboard/notes" },
   { title: "Bulletins", icon: FileText, href: "/dashboard/bulletins" },
   { title: "Comptabilité", icon: Coins, href: "/dashboard/comptabilite" },
+  { title: "Utilisateurs", icon: UserPlus, href: "/dashboard/utilisateurs", superAdminOnly: true },
   { title: "Paramètres", icon: Settings, href: "/dashboard/settings" },
-] as const;
+];
 
 function roleShortLabelFr(role: string | null): string {
   if (!role) return "Utilisateur";
@@ -88,7 +99,10 @@ export default function DashboardNavPanel({
   const visibleMenu = useMemo(() => {
     if (loading) return [...menuItems];
     const allowed = menuHrefSetForProfileRole(profile?.role ?? null);
-    return menuItems.filter((item) => allowed.has(item.href));
+    return menuItems.filter((item) => {
+      if (item.superAdminOnly && profile?.role !== "super_admin") return false;
+      return allowed.has(item.href);
+    });
   }, [loading, profile?.role]);
 
   const handleLogout = async () => {

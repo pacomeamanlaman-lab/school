@@ -169,7 +169,7 @@ export default function AddClassModal({
                   className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition disabled:opacity-60"
                 >
                   <option value="">
-                    {anneesLoading ? "Chargement…" : "Choisir une année (paramètres / seed)"}
+                    {anneesLoading ? "Chargement…" : "Choisir une année scolaire"}
                   </option>
                   {anneeScolaireOptions.map((o) => (
                     <option key={o.value} value={o.value}>

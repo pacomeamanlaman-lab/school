@@ -365,7 +365,7 @@ export default function StudentDetailPage() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <p className="text-foreground font-medium">Élève introuvable.</p>
-        <p className="text-sm text-muted-foreground">Vérifiez l&apos;URL ou les droits RLS sur la table students.</p>
+        <p className="text-sm text-muted-foreground">Vérifiez l&apos;adresse ou contactez l&apos;administrateur.</p>
       </div>
     );
   }
@@ -388,7 +388,7 @@ export default function StudentDetailPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-foreground">Fiche élève</h1>
-          <p className="text-muted-foreground">Informations détaillées (Supabase)</p>
+          <p className="text-muted-foreground">Scolarité, santé, documents et contacts</p>
         </div>
         <button
           type="button"
@@ -599,7 +599,7 @@ export default function StudentDetailPage() {
           </div>
 
           <div className="bg-card border border-border rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-foreground mb-4">Notes en base</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-4">Notes</h3>
             {vm.notes.length ? (
               <>
                 <div className="space-y-3">
@@ -649,7 +649,7 @@ export default function StudentDetailPage() {
               </div>
 
               <div>
-                <p className="text-xs text-muted-foreground mb-1">Date d&apos;inscription (created_at)</p>
+                <p className="text-xs text-muted-foreground mb-1">Date d&apos;inscription</p>
                 <p className="text-sm font-medium text-foreground">
                   {new Date(vm.dateInscription).toLocaleDateString("fr-FR")}
                 </p>
@@ -747,7 +747,7 @@ export default function StudentDetailPage() {
             ) : (
               <div className="text-center py-6">
                 <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-                <p className="text-sm text-muted-foreground">Aucun document en base pour cet élève.</p>
+                <p className="text-sm text-muted-foreground">Aucun document enregistré pour cet élève.</p>
               </div>
             )}
           </div>
@@ -809,9 +809,8 @@ export default function StudentDetailPage() {
         isOpen={!!waContext}
         onClose={() => setWaContext(null)}
         context={waContext}
-        onConfirmSend={(ctx) => {
-          console.log("[MVP WhatsApp] Fiche élève — envoi simulé:", ctx);
-          flash("Envoi WhatsApp simulé (branchement Meta + backend à venir).", "info");
+        onConfirmSend={() => {
+          flash("Notification préparée. L'envoi automatique sera disponible prochainement.", "info");
         }}
       />
     </div>

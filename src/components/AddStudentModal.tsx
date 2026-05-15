@@ -31,7 +31,7 @@ interface AddStudentModalProps {
   /** Retourner `false` pour garder le modal ouvert (ex. erreur enregistrement). */
   onSubmit?: (data: any) => boolean | void | Promise<boolean | void>;
   student?: any;
-  /** Classes actives Supabase (valeur du select = `id` → `classe_id`) */
+  /** Classes actives (select = id interne → classe_id) */
   classOptions: ClasseSelectOption[];
   classesLoading?: boolean;
 }
@@ -516,7 +516,7 @@ export default function AddStudentModal({
               ) : null}
 
               <p className="text-xs text-muted-foreground mt-2">
-                Bucket « student-documents » — jusqu&apos;à {MAX_STUDENT_DOCS} fichiers (voir seed SQL).
+                Jusqu&apos;à {MAX_STUDENT_DOCS} fichiers par élève (pièces justificatives, certificats, etc.).
               </p>
             </div>
           </div>

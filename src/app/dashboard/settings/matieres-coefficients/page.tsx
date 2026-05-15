@@ -269,14 +269,14 @@ export default function MatieresCoefficientsSettingsPage() {
   return (
     <div className="space-y-6">
       <FlashNotice payload={notice} />
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
           <Link href="/dashboard/settings" className="inline-flex items-center gap-2 text-sm text-primary hover:underline">
             <ArrowLeft className="h-4 w-4" />
             Retour aux parametres
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-foreground">Matieres & Coefficients</h1>
-          <p className="text-muted-foreground">Table `matieres` (coefficient, couleur, actif)</p>
+          <p className="text-muted-foreground">Coefficients, couleurs et matières actives</p>
         </div>
       </div>
 
@@ -285,18 +285,18 @@ export default function MatieresCoefficientsSettingsPage() {
       ) : null}
 
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="flex items-center justify-between mb-4">
-          <div>
+        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
             <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-success" />
               Matieres
             </h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Les champs cycle / niveaux détaillés du formulaire servent à la saisie ; seuls nom, coefficient et couleur
-              sont persistés en base sur ce schéma.
+              Les champs cycle et niveaux du formulaire aident à la saisie ; seuls le nom, le coefficient et la couleur
+              sont enregistrés pour chaque matière.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:justify-end sm:gap-3">
             <button type="button" onClick={() => setIsCoeffGrilleModalOpen(true)} className="text-sm text-primary hover:underline">
               Grille officielle
             </button>
@@ -304,7 +304,7 @@ export default function MatieresCoefficientsSettingsPage() {
               type="button"
               disabled={loading || !etablissementId}
               onClick={() => setIsAddMatiereOpen(true)}
-              className="flex items-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20 disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 px-3 py-2 bg-success/10 hover:bg-success/20 text-success rounded-lg transition font-medium border border-success/20 disabled:opacity-50 sm:w-auto"
             >
               <Plus className="w-4 h-4" />
               Ajouter

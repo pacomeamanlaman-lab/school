@@ -34,7 +34,7 @@ export default function TimetableConfigPage() {
     setEtablissementId(row.id);
     const fromDb = loadTimetableFromSettings(row.settings);
     setConfig(fromDb);
-    setFeedback("Configuration chargée depuis Supabase.");
+    setFeedback("Configuration chargée.");
     setLoading(false);
   }, []);
 
@@ -59,7 +59,7 @@ export default function TimetableConfigPage() {
       return;
     }
     if (!etablissementId) {
-      setFeedback("Impossible d'enregistrer : pas d'établissement en base.");
+      setFeedback("Impossible d'enregistrer : aucun établissement configuré.");
       return;
     }
     setSaving(true);
@@ -68,10 +68,10 @@ export default function TimetableConfigPage() {
       const supabase = createClient();
       const { error } = await mergeEtablissementSettings(supabase, etablissementId, { timetableTech: config });
       if (error) {
-        setFeedback(`Erreur Supabase: ${error}`);
+        setFeedback(`Erreur : ${error}`);
         return;
       }
-      setFeedback("Configuration enregistrée sur Supabase.");
+      setFeedback("Configuration enregistrée.");
     } catch (e) {
       setFeedback(e instanceof Error ? e.message : "Erreur inattendue lors de l'enregistrement.");
     } finally {
@@ -93,7 +93,7 @@ export default function TimetableConfigPage() {
             Retour aux parametres
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-foreground">Configuration technique EDT</h1>
-          <p className="text-muted-foreground">Stockée dans `etablissements.settings.timetableTech` (source unique pour les grilles EDT).</p>
+          <p className="text-muted-foreground">Paramètres techniques partagés par toutes les grilles d&apos;emploi du temps.</p>
         </div>
       </div>
 

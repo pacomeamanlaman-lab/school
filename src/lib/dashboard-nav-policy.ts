@@ -14,6 +14,7 @@ export const DASHBOARD_MENU_HREFS = [
   "/dashboard/notes",
   "/dashboard/bulletins",
   "/dashboard/comptabilite",
+  "/dashboard/utilisateurs",
   "/dashboard/settings",
 ] as const;
 
@@ -30,8 +31,12 @@ export function menuHrefSetForProfileRole(role: string | null | undefined): Read
 
   switch (role) {
     case "super_admin":
-    case "admin":
       return ALL;
+
+    case "admin":
+      return new Set(
+        DASHBOARD_MENU_HREFS.filter((h) => h !== "/dashboard/utilisateurs")
+      );
 
     case "enseignant":
       return new Set<string>([

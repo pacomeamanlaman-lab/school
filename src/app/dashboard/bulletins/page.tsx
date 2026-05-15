@@ -244,7 +244,7 @@ export default function BulletinsPage() {
       <FlashNotice payload={notice} />
       <div>
         <h1 className="text-2xl font-bold text-foreground">Bulletins scolaires</h1>
-        <p className="text-muted-foreground">Calcul à partir des notes Supabase</p>
+        <p className="text-muted-foreground">Synthèses et moyennes par période</p>
       </div>
 
       {error ? (
@@ -315,7 +315,7 @@ export default function BulletinsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Élèves</p>
           <p className="text-2xl font-bold text-foreground mt-1">{loading ? "…" : bulletinStudents.length}</p>
@@ -470,9 +470,15 @@ export default function BulletinsPage() {
             aria-hidden
           />
           <div className="relative bg-card rounded-2xl shadow-2xl border border-border w-full max-w-4xl my-8">
-            <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">Bulletin scolaire - {selectedTrimestreNom}</h3>
-              <button type="button" onClick={() => setSelectedStudent(null)} className="p-2 hover:bg-accent rounded-lg transition">
+            <div className="px-4 py-4 sm:px-6 border-b border-border flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <h3 className="text-lg font-semibold text-foreground min-w-0 pr-2">
+                Bulletin scolaire - {selectedTrimestreNom}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedStudent(null)}
+                className="self-end p-2 hover:bg-accent rounded-lg transition sm:self-auto"
+              >
                 ✕
               </button>
             </div>
@@ -619,9 +625,8 @@ export default function BulletinsPage() {
         isOpen={!!waContext}
         onClose={() => setWaContext(null)}
         context={waContext}
-        onConfirmSend={(ctx) => {
-          console.log("[MVP WhatsApp] Bulletin — envoi simulé:", ctx);
-          flash("Envoi WhatsApp simulé (branchement Meta + backend à venir).", "info");
+        onConfirmSend={() => {
+          flash("Notification préparée. L'envoi automatique sera disponible prochainement.", "info");
         }}
       />
     </div>

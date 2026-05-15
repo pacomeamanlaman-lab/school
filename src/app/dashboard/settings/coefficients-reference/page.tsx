@@ -50,7 +50,7 @@ export default function CoefficientsReferencePage() {
       setFeedback(`Erreur sauvegarde: ${error}`);
       return;
     }
-    setFeedback("Grille enregistrée dans Supabase.");
+    setFeedback("Grille enregistrée.");
   };
 
   const handleUpdateCoeffRow = (id: number, next: number) => {
@@ -72,7 +72,7 @@ export default function CoefficientsReferencePage() {
             Retour aux paramètres
           </Link>
           <h1 className="mt-2 text-2xl font-bold text-foreground">Grille des coefficients (référence)</h1>
-          <p className="text-muted-foreground">Stockée dans `etablissements.settings.coeffGrilleRows`</p>
+          <p className="text-muted-foreground">Référentiel officiel des coefficients par matière et niveau</p>
         </div>
         <button
           type="button"

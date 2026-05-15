@@ -284,7 +284,7 @@ export default function NotesPage() {
       <FlashNotice payload={notice} />
       <div>
         <h1 className="text-2xl font-bold text-foreground">Notes & Évaluations</h1>
-        <p className="text-muted-foreground">Saisie Supabase (table notes)</p>
+        <p className="text-muted-foreground">Saisie et suivi des notes par matière et trimestre</p>
       </div>
 
       {error ? (
@@ -292,7 +292,7 @@ export default function NotesPage() {
       ) : null}
 
       <div className="bg-card border border-border rounded-xl p-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Classe <span className="text-danger">*</span>
@@ -373,7 +373,7 @@ export default function NotesPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <p className="text-sm text-muted-foreground">Élèves</p>
           <p className="text-2xl font-bold text-foreground mt-1">{loading ? "…" : students.length}</p>
@@ -393,8 +393,8 @@ export default function NotesPage() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-foreground">
+        <div className="px-4 py-4 sm:px-6 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="text-lg font-semibold text-foreground min-w-0">
             Saisie des notes - {selectedMatiereNom} ({selectedTrimestreNom})
           </h3>
           <button
@@ -402,7 +402,7 @@ export default function NotesPage() {
             disabled={!canNotesWrite || saving || loading}
             title={!canNotesWrite ? "Saisie réservée aux enseignants et administrateurs" : undefined}
             onClick={() => void handleSaveNotes()}
-            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
+            className="flex w-full shrink-0 items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20 sm:w-auto"
           >
             <Save className="w-4 h-4" />
             {saving ? "Enregistrement…" : "Enregistrer"}
@@ -526,9 +526,9 @@ export default function NotesPage() {
           </table>
         </div>
 
-        <div className="px-6 py-4 border-t border-border bg-muted/30">
-          <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-6 flex-wrap">
+        <div className="px-4 py-4 sm:px-6 border-t border-border bg-muted/30">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:flex-wrap">
+            <div className="flex flex-wrap items-center gap-6">
               <div>
                 <p className="text-sm text-muted-foreground">Moyenne de la classe</p>
                 <p className="text-2xl font-bold text-primary">{calculateMoyenne()}/20</p>
@@ -546,7 +546,7 @@ export default function NotesPage() {
                 </p>
               </div>
             </div>
-            <div className="text-right">
+            <div className="text-left sm:text-right w-full sm:w-auto">
               <p className="text-sm text-muted-foreground">Taux de réussite (≥10/20)</p>
               <p className="text-2xl font-bold text-foreground">
                 {Object.values(notes).length > 0
@@ -563,9 +563,8 @@ export default function NotesPage() {
         isOpen={!!waContext}
         onClose={() => setWaContext(null)}
         context={waContext}
-        onConfirmSend={(ctx) => {
-          console.log("[MVP WhatsApp] Note — envoi simulé:", ctx);
-          flash("Envoi WhatsApp simulé (branchement Meta + backend à venir).", "info");
+        onConfirmSend={() => {
+          flash("Notification préparée. L'envoi automatique sera disponible prochainement.", "info");
         }}
       />
     </div>

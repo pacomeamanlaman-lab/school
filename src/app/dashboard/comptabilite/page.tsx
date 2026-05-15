@@ -224,14 +224,14 @@ export default function ComptabilitePage() {
       <FlashNotice payload={notice} />
       <div>
         <h1 className="text-2xl font-bold text-foreground">Comptabilité & Frais scolaires</h1>
-        <p className="text-muted-foreground">Supabase (frais_scolaires, paiements)</p>
+        <p className="text-muted-foreground">Dossiers financiers, paiements et relances</p>
       </div>
 
       {error ? (
         <div className="rounded-lg border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">{error}</div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -322,11 +322,8 @@ export default function ComptabilitePage() {
                     <td colSpan={8} className="px-6 py-10 text-center text-muted-foreground text-sm">
                       {fraisScolaires.length === 0 ? (
                         <p>
-                          Aucune donnée : soit le seed n’a pas créé de lignes dans{" "}
-                          <code className="text-xs bg-muted px-1 rounded">frais_scolaires</code>, soit Supabase RLS
-                          bloque la lecture pour ce compte. En dev, exécutez le script{" "}
-                          <code className="text-xs bg-muted px-1 rounded">supabase-rls-permissive-dev.sql</code> dans
-                          le SQL Editor.
+                          Aucun dossier financier enregistré pour le moment. Les élèves doivent avoir des frais
+                          scolaires associés pour apparaître ici.
                         </p>
                       ) : (
                         <p>Aucun résultat pour cette recherche ou ce filtre.</p>
