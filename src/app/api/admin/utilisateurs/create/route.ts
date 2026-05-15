@@ -5,7 +5,7 @@ import type { Database } from "@/lib/supabase/types";
 
 type ProfileRole = Database["public"]["Tables"]["profiles"]["Row"]["role"];
 
-const INVITABLE_ROLES: readonly ProfileRole[] = [
+const CREATABLE_ROLES: readonly ProfileRole[] = [
   "super_admin",
   "admin",
   "enseignant",
@@ -17,14 +17,13 @@ const INVITABLE_ROLES: readonly ProfileRole[] = [
 ];
 
 function isProfileRole(v: unknown): v is ProfileRole {
-  return typeof v === "string" && (INVITABLE_ROLES as readonly string[]).includes(v);
+  return typeof v === "string" && (CREATABLE_ROLES as readonly string[]).includes(v);
 }
 
-function siteOrigin(): string {
-  const explicit = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  if (explicit) return explicit;
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  return "http://localhost:3000";
+function validateTempPassword(pw: string): string | null {
+  if (pw.length < 8) return "Le mot de passe temporaire doit contenir au moins 8 caractères.";
+  if (pw.length > 128) return "Mot de passe trop long.";
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -56,6 +55,14 @@ export async function POST(request: Request) {
     const last_name =
       typeof (body as { last_name?: unknown }).last_name === "string" ? (body as { last_name: string }).last_name.trim() : "";
     const roleRaw = (body as { role?: unknown }).role;
+    const temporary_password =
+      typeof (body as { temporary_password?: unknown }).temporary_password === "string"
+        ? (body as { temporary_password: string }).temporary_password
+        : "";
+    const temporary_password_confirm =
+      typeof (body as { temporary_password_confirm?: unknown }).temporary_password_confirm === "string"
+        ? (body as { temporary_password_confirm: string }).temporary_password_confirm
+        : "";
 
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "Adresse e-mail invalide." }, { status: 400 });
@@ -66,6 +73,13 @@ export async function POST(request: Request) {
     if (!isProfileRole(roleRaw)) {
       return NextResponse.json({ error: "Rôle invalide." }, { status: 400 });
     }
+    const pwErr = validateTempPassword(temporary_password);
+    if (pwErr) {
+      return NextResponse.json({ error: pwErr }, { status: 400 });
+    }
+    if (temporary_password !== temporary_password_confirm) {
+      return NextResponse.json({ error: "Les deux mots de passe temporaires ne correspondent pas." }, { status: 400 });
+    }
 
     let admin;
     try {
@@ -75,24 +89,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: msg }, { status: 503 });
     }
 
-    const redirectTo = `${siteOrigin()}/login`;
-
-    const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email, {
-      data: { first_name, last_name },
-      redirectTo,
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      password: temporary_password,
+      email_confirm: true,
+      user_metadata: {
+        first_name,
+        last_name,
+      },
+      app_metadata: {
+        must_change_password: true,
+      },
     });
 
-    if (inviteErr) {
+    if (createErr) {
       const msg =
-        inviteErr.message?.includes("already been registered") || inviteErr.message?.includes("already exists")
+        createErr.message?.includes("already been registered") || createErr.message?.includes("already exists")
           ? "Un compte existe déjà avec cet e-mail."
-          : inviteErr.message;
+          : createErr.message;
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
-    const uid = invited.user?.id;
+    const uid = created.user?.id;
     if (!uid) {
-      return NextResponse.json({ error: "Invitation créée mais identifiant utilisateur manquant." }, { status: 500 });
+      return NextResponse.json({ error: "Compte créé mais identifiant utilisateur manquant." }, { status: 500 });
     }
 
     const { error: profileErr } = await admin.from("profiles").upsert(
@@ -109,8 +129,9 @@ export async function POST(request: Request) {
     );
 
     if (profileErr) {
+      await admin.auth.admin.deleteUser(uid);
       return NextResponse.json(
-        { error: `Compte invité mais fiche profil : ${profileErr.message}` },
+        { error: `Création du profil impossible : ${profileErr.message}` },
         { status: 500 }
       );
     }

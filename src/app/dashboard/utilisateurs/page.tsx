@@ -34,7 +34,7 @@ export default async function UtilisateursPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Gestion des utilisateurs</h1>
         <p className="text-muted-foreground mt-1">
-          Invitations et comptes de la plateforme — réservé au super administrateur.
+          Création des comptes (mot de passe temporaire) et liste des profils — réservé au super administrateur.
         </p>
       </div>
       <UtilisateursManager initialProfiles={initialProfiles} loadError={error?.message ?? null} />

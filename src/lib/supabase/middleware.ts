@@ -35,18 +35,45 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
 
+  const redirectWithSession = (url: URL) => {
+    const res = NextResponse.redirect(url)
+    supabaseResponse.cookies.getAll().forEach((c) => {
+      res.cookies.set(c.name, c.value, c);
+    })
+    return res
+  }
+
+  const mustChangePassword =
+    !!user &&
+    typeof user.app_metadata === "object" &&
+    user.app_metadata !== null &&
+    (user.app_metadata as Record<string, unknown>).must_change_password === true
+
   // Protection des routes /dashboard
-  if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
+  if (!user && request.nextUrl.pathname.startsWith("/dashboard")) {
     const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+    url.pathname = "/login"
+    return redirectWithSession(url)
+  }
+
+  // Changement de mot de passe obligatoire : page dédiée (hors /dashboard)
+  if (!user && request.nextUrl.pathname.startsWith("/premiere-connexion")) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/login"
+    return redirectWithSession(url)
+  }
+
+  if (user && request.nextUrl.pathname.startsWith("/premiere-connexion") && !mustChangePassword) {
+    const url = request.nextUrl.clone()
+    url.pathname = "/dashboard"
+    return redirectWithSession(url)
   }
 
   // Redirection si déjà connecté et visite /login
-  if (user && request.nextUrl.pathname === '/login') {
+  if (user && request.nextUrl.pathname === "/login") {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
+    url.pathname = mustChangePassword ? "/premiere-connexion" : "/dashboard"
+    return redirectWithSession(url)
   }
 
   // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're

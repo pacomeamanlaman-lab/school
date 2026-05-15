@@ -44,9 +44,15 @@ export default function LoginPage() {
         return;
       }
 
+      const {
+        data: { user: signedIn },
+      } = await supabase.auth.getUser();
+      const meta = signedIn?.app_metadata as Record<string, unknown> | undefined;
+      const mustChange = meta?.must_change_password === true;
+
       // Navigation pleine page : le loader reste affiché jusqu’au déchargement de cette page
       // (évite que `finally` / `router.push` seul coupent le spinner avant l’affichage du dashboard).
-      window.location.assign("/dashboard");
+      window.location.assign(mustChange ? "/premiere-connexion" : "/dashboard");
     } catch {
       setErrorMessage("Une erreur inattendue s’est produite. Réessayez.");
       setIsLoading(false);

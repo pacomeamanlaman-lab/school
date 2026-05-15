@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import type { Database } from "@/lib/supabase/types";
 
 export type UtilisateurRow = {
@@ -86,41 +87,48 @@ type Props = {
 
 export default function UtilisateursManager({ initialProfiles, loadError }: Props) {
   const router = useRouter();
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteFirst, setInviteFirst] = useState("");
-  const [inviteLast, setInviteLast] = useState("");
-  const [inviteRole, setInviteRole] = useState<ProfileRole>("enseignant");
+  const [createEmail, setCreateEmail] = useState("");
+  const [createFirst, setCreateFirst] = useState("");
+  const [createLast, setCreateLast] = useState("");
+  const [createRole, setCreateRole] = useState<ProfileRole>("enseignant");
+  const [tempPassword, setTempPassword] = useState("");
+  const [tempPasswordConfirm, setTempPasswordConfirm] = useState("");
+  const [showTempPassword, setShowTempPassword] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
   const [banner, setBanner] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const handleInvite = async (e: React.FormEvent) => {
+  const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setBanner(null);
     setFormBusy(true);
     try {
-      const res = await fetch("/api/admin/utilisateurs/invite", {
+      const res = await fetch("/api/admin/utilisateurs/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: inviteEmail.trim(),
-          first_name: inviteFirst.trim(),
-          last_name: inviteLast.trim(),
-          role: inviteRole,
+          email: createEmail.trim(),
+          first_name: createFirst.trim(),
+          last_name: createLast.trim(),
+          role: createRole,
+          temporary_password: tempPassword,
+          temporary_password_confirm: tempPasswordConfirm,
         }),
       });
       const data = (await res.json()) as { error?: string; ok?: boolean };
       if (!res.ok) {
-        setBanner({ type: "error", text: data.error ?? "Invitation impossible." });
+        setBanner({ type: "error", text: data.error ?? "Création impossible." });
         return;
       }
       setBanner({
         type: "success",
-        text: "Invitation envoyée. La personne recevra un e-mail pour définir son mot de passe. Pensez à compléter sa fiche dans Personnel si besoin.",
+        text: "Compte créé. Communiquez le mot de passe temporaire par un canal sécurisé ; l’utilisateur devra choisir un nouveau mot de passe à la première connexion. Pensez à la fiche Personnel si besoin.",
       });
-      setInviteEmail("");
-      setInviteFirst("");
-      setInviteLast("");
-      setInviteRole("enseignant");
+      setCreateEmail("");
+      setCreateFirst("");
+      setCreateLast("");
+      setCreateRole("enseignant");
+      setTempPassword("");
+      setTempPasswordConfirm("");
       router.refresh();
     } catch {
       setBanner({ type: "error", text: "Erreur réseau. Réessayez." });
@@ -148,26 +156,13 @@ export default function UtilisateursManager({ initialProfiles, loadError }: Prop
       ) : null}
 
       <section className="rounded-xl border border-border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-foreground">Inviter un utilisateur</h2>
+        <h2 className="text-lg font-semibold text-foreground">Créer un utilisateur</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Crée le compte et envoie un lien par e-mail pour choisir le mot de passe. Les comptes staff restent à rattacher
-          dans <strong>Personnel</strong> pour la fiche RH.
+          Définissez un <strong>mot de passe temporaire</strong> (minimum 8 caractères) : communiquez-le hors de la
+          plateforme ; à la première connexion, l’utilisateur devra en choisir un nouveau. Les comptes staff restent à
+          rattacher dans <strong>Personnel</strong> pour la fiche RH.
         </p>
-        <form onSubmit={(e) => void handleInvite(e)} className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-foreground mb-2">
-              E-mail <span className="text-danger">*</span>
-            </label>
-            <input
-              type="email"
-              required
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              className="w-full px-4 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
-              placeholder="prenom.nom@ecole.ci"
-              autoComplete="email"
-            />
-          </div>
+        <form onSubmit={(e) => void handleCreateUser(e)} className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Prénom <span className="text-danger">*</span>
@@ -175,8 +170,8 @@ export default function UtilisateursManager({ initialProfiles, loadError }: Prop
             <input
               type="text"
               required
-              value={inviteFirst}
-              onChange={(e) => setInviteFirst(e.target.value)}
+              value={createFirst}
+              onChange={(e) => setCreateFirst(e.target.value)}
               className="w-full px-4 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
@@ -187,19 +182,33 @@ export default function UtilisateursManager({ initialProfiles, loadError }: Prop
             <input
               type="text"
               required
-              value={inviteLast}
-              onChange={(e) => setInviteLast(e.target.value)}
+              value={createLast}
+              onChange={(e) => setCreateLast(e.target.value)}
               className="w-full px-4 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <div className="md:col-span-2">
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              E-mail <span className="text-danger">*</span>
+            </label>
+            <input
+              type="email"
+              required
+              value={createEmail}
+              onChange={(e) => setCreateEmail(e.target.value)}
+              className="w-full px-4 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="prenom.nom@ecole.ci"
+              autoComplete="off"
+            />
+          </div>
+          <div>
             <label className="block text-sm font-medium text-foreground mb-2">
               Rôle sur la plateforme <span className="text-danger">*</span>
             </label>
             <select
-              value={inviteRole}
-              onChange={(e) => setInviteRole(e.target.value as ProfileRole)}
-              className="w-full max-w-md px-4 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+              value={createRole}
+              onChange={(e) => setCreateRole(e.target.value as ProfileRole)}
+              className="w-full px-4 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
             >
               {ROLE_OPTIONS.map((r) => (
                 <option key={r} value={r}>
@@ -208,13 +217,51 @@ export default function UtilisateursManager({ initialProfiles, loadError }: Prop
               ))}
             </select>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Mot de passe temporaire <span className="text-danger">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type={showTempPassword ? "text" : "password"}
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={tempPassword}
+                onChange={(e) => setTempPassword(e.target.value)}
+                className="w-full pl-4 pr-11 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={() => setShowTempPassword((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-0.5"
+                aria-label={showTempPassword ? "Masquer" : "Afficher"}
+              >
+                {showTempPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">
+              Confirmer le mot de passe temporaire <span className="text-danger">*</span>
+            </label>
+            <input
+              type={showTempPassword ? "text" : "password"}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={tempPasswordConfirm}
+              onChange={(e) => setTempPasswordConfirm(e.target.value)}
+              className="w-full px-4 py-2.5 bg-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
           <div className="md:col-span-2 flex justify-end">
             <button
               type="submit"
               disabled={formBusy}
               className="px-5 py-2.5 bg-primary text-white rounded-lg font-medium shadow-lg shadow-primary/20 hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition"
             >
-              {formBusy ? "Envoi…" : "Envoyer l’invitation"}
+              {formBusy ? "Création…" : "Créer le compte"}
             </button>
           </div>
         </form>
