@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, GraduationCap, Lock, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -15,7 +14,6 @@ import {
 import styles from "./page.module.css";
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [demoProfileId, setDemoProfileId] = useState<"" | DemoLoginProfileId>("");
@@ -42,13 +40,15 @@ export default function LoginPage() {
             ? "Email ou mot de passe incorrect."
             : error.message
         );
+        setIsLoading(false);
         return;
       }
 
-      // Met à jour les cookies côté serveur (middleware / RLS)
-      router.refresh();
-      router.push("/dashboard");
-    } finally {
+      // Navigation pleine page : le loader reste affiché jusqu’au déchargement de cette page
+      // (évite que `finally` / `router.push` seul coupent le spinner avant l’affichage du dashboard).
+      window.location.assign("/dashboard");
+    } catch {
+      setErrorMessage("Une erreur inattendue s’est produite. Réessayez.");
       setIsLoading(false);
     }
   };
