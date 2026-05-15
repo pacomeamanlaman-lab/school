@@ -5,6 +5,8 @@ import { Filter, Save, Download, Award, TrendingUp, FileSpreadsheet, MessageCirc
 import FlashNotice from "@/components/FlashNotice";
 import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { buildNoteWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { exportNotesToPDF } from "@/utils/pdfExport";
 import { exportNotesToExcel } from "@/utils/excelExport";
@@ -38,6 +40,10 @@ export default function NotesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const userRole = profile?.role ?? null;
+  const canNotesWrite = canDashboardAction(userRole, "notesWrite");
+  const canNotesExport = canDashboardAction(userRole, "notesExport");
 
   const selectedClassName = useMemo(
     () => classes.find((c) => c.id === selectedClasseId)?.name ?? "",
@@ -156,6 +162,7 @@ export default function NotesPage() {
   }, [selectedClasseId, selectedMatiereId, selectedTrimestreId, loadStudentsAndNotes]);
 
   const handleNoteChange = (studentId: string, value: string) => {
+    if (!canNotesWrite) return;
     const note = parseFloat(value);
     if (!Number.isNaN(note) && note >= 0 && note <= 20) {
       setNotes({ ...notes, [studentId]: note });
@@ -183,6 +190,10 @@ export default function NotesPage() {
   }, [students, notes]);
 
   const handleSaveNotes = async () => {
+    if (!canNotesWrite) {
+      flash("La saisie des notes est réservée aux enseignants et aux administrateurs.", "error");
+      return;
+    }
     if (!selectedClasseId || !selectedMatiereId || !selectedTrimestreId) return;
     const supabase = createClient();
     const {
@@ -239,6 +250,10 @@ export default function NotesPage() {
   };
 
   const handleExportPDF = async () => {
+    if (!canNotesExport) {
+      flash("Export non autorisé pour votre rôle.", "error");
+      return;
+    }
     try {
       await exportNotesToPDF(selectedClassName, selectedMatiereNom, selectedTrimestreNom);
     } catch (e) {
@@ -248,6 +263,10 @@ export default function NotesPage() {
   };
 
   const handleExportExcel = () => {
+    if (!canNotesExport) {
+      flash("Export non autorisé pour votre rôle.", "error");
+      return;
+    }
     const studentsWithNotes = students.map((student) => {
       const studentNote = notes[student.id];
       return {
@@ -334,16 +353,18 @@ export default function NotesPage() {
           <div className="flex flex-col gap-2 justify-end">
             <button
               type="button"
+              disabled={!canNotesExport}
               onClick={() => void handleExportPDF()}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4" />
               PDF
             </button>
             <button
               type="button"
+              disabled={!canNotesExport}
               onClick={handleExportExcel}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Excel
@@ -378,7 +399,8 @@ export default function NotesPage() {
           </h3>
           <button
             type="button"
-            disabled={saving || loading}
+            disabled={!canNotesWrite || saving || loading}
+            title={!canNotesWrite ? "Saisie réservée aux enseignants et administrateurs" : undefined}
             onClick={() => void handleSaveNotes()}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
           >
@@ -450,10 +472,11 @@ export default function NotesPage() {
                           min={0}
                           max={20}
                           step={0.5}
+                          readOnly={!canNotesWrite}
                           value={notes[student.id] ?? ""}
                           onChange={(e) => handleNoteChange(student.id, e.target.value)}
                           placeholder="--"
-                          className="w-24 px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition text-center font-semibold text-lg"
+                          className="w-24 px-3 py-2 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition text-center font-semibold text-lg read-only:bg-muted/50 read-only:cursor-not-allowed"
                         />
                       </td>
                       <td className="px-6 py-4 text-center">
@@ -473,6 +496,7 @@ export default function NotesPage() {
                         {studentNote !== undefined && !Number.isNaN(studentNote) ? (
                           <button
                             type="button"
+                            disabled={!canNotesWrite}
                             onClick={() =>
                               setWaContext(
                                 buildNoteWhatsAppContext({
@@ -485,7 +509,7 @@ export default function NotesPage() {
                                 })
                               )
                             }
-                            className="inline-flex items-center gap-1 rounded-lg border border-[#25D366]/40 bg-[#25D366]/10 px-2.5 py-1.5 text-xs font-medium text-[#128C7E] transition hover:bg-[#25D366]/20"
+                            className="inline-flex items-center gap-1 rounded-lg border border-[#25D366]/40 bg-[#25D366]/10 px-2.5 py-1.5 text-xs font-medium text-[#128C7E] transition hover:bg-[#25D366]/20 disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <MessageCircle className="h-3.5 w-3.5" />
                             Notifier

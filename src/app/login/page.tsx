@@ -5,12 +5,20 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff, GraduationCap, Lock, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  DEMO_LOGIN_AUTOFILL_ENABLED,
+  DEMO_LOGIN_PROFILES,
+  DEMO_SEED_PASSWORD,
+  type DemoLoginProfileId,
+  getDemoProfileById,
+} from "@/lib/demo-login-autofill";
 import styles from "./page.module.css";
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [demoProfileId, setDemoProfileId] = useState<"" | DemoLoginProfileId>("");
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -43,6 +51,21 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDemoProfileChange = (value: string) => {
+    if (value === "") {
+      setDemoProfileId("");
+      setEmail("");
+      setPassword("");
+      return;
+    }
+    const id = value as DemoLoginProfileId;
+    const profile = getDemoProfileById(id);
+    if (!profile) return;
+    setDemoProfileId(id);
+    setEmail(profile.email);
+    setPassword(DEMO_SEED_PASSWORD);
   };
 
   return (
@@ -135,6 +158,31 @@ export default function LoginPage() {
             <p className={styles.errorBanner} role="alert">
               {errorMessage}
             </p>
+          ) : null}
+
+          {DEMO_LOGIN_AUTOFILL_ENABLED ? (
+            <div className={styles.demoAutofill}>
+              <p className={styles.demoAutofillHint}>
+                Choisissez un profil seed pour préremplir email et mot de passe (tests uniquement).
+              </p>
+              <label htmlFor="demo-login-profile" className="sr-only">
+                Profil démo
+              </label>
+              <select
+                id="demo-login-profile"
+                className={styles.demoSelect}
+                value={demoProfileId}
+                onChange={(e) => handleDemoProfileChange(e.target.value)}
+                disabled={isLoading}
+              >
+                <option value="">Choisir un profil…</option>
+                {DEMO_LOGIN_PROFILES.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.label} — {p.email}
+                  </option>
+                ))}
+              </select>
+            </div>
           ) : null}
 
           <form onSubmit={handleSubmit} className={styles.form}>

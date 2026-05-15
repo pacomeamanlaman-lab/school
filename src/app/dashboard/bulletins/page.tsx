@@ -5,6 +5,8 @@ import { Filter, Download, Eye, Send, FileSpreadsheet } from "lucide-react";
 import FlashNotice from "@/components/FlashNotice";
 import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { buildBulletinWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { exportBulletinToPDF } from "@/utils/pdfExport";
 import { exportBulletinsToExcel } from "@/utils/excelExport";
@@ -43,6 +45,10 @@ export default function BulletinsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const userRole = profile?.role ?? null;
+  const canBulletinPdf = canDashboardAction(userRole, "bulletinPdfExcel");
+  const canBulletinNotify = canDashboardAction(userRole, "bulletinParentNotify");
 
   const selectedClassName = useMemo(
     () => classes.find((c) => c.id === selectedClasseId)?.name ?? "",
@@ -191,6 +197,10 @@ export default function BulletinsPage() {
   }, [bulletinStudents]);
 
   const handleGeneratePDF = async (student: BulletinStudent) => {
+    if (!canBulletinPdf) {
+      flash("Export PDF non autorisé pour votre rôle.", "error");
+      return;
+    }
     setSelectedStudent(student);
     await new Promise((resolve) => setTimeout(resolve, 300));
     try {
@@ -204,6 +214,10 @@ export default function BulletinsPage() {
   };
 
   const handleGenerateAllPDF = async () => {
+    if (!canBulletinPdf) {
+      flash("Export PDF non autorisé pour votre rôle.", "error");
+      return;
+    }
     for (const student of bulletinStudents) {
       setSelectedStudent(student);
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -218,6 +232,10 @@ export default function BulletinsPage() {
   };
 
   const handleExportExcel = () => {
+    if (!canBulletinPdf) {
+      flash("Export Excel non autorisé pour votre rôle.", "error");
+      return;
+    }
     exportBulletinsToExcel(selectedClassName, selectedTrimestreNom, bulletinStudents);
   };
 
@@ -277,16 +295,18 @@ export default function BulletinsPage() {
           <div className="flex items-end gap-3">
             <button
               type="button"
+              disabled={!canBulletinPdf}
               onClick={() => void handleGenerateAllPDF()}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4" />
               PDF (tous)
             </button>
             <button
               type="button"
+              disabled={!canBulletinPdf}
               onClick={handleExportExcel}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Excel
@@ -406,14 +426,16 @@ export default function BulletinsPage() {
                         </button>
                         <button
                           type="button"
+                          disabled={!canBulletinPdf}
                           onClick={() => void handleGeneratePDF(student)}
-                          className="flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition text-sm font-medium"
+                          className="flex items-center gap-2 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Download className="w-4 h-4" />
                           PDF
                         </button>
                         <button
                           type="button"
+                          disabled={!canBulletinNotify}
                           onClick={() =>
                             setWaContext(
                               buildBulletinWhatsAppContext({
@@ -425,7 +447,7 @@ export default function BulletinsPage() {
                               })
                             )
                           }
-                          className="flex items-center gap-2 px-3 py-2 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition text-sm font-medium"
+                          className="flex items-center gap-2 px-3 py-2 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Send className="w-4 h-4" />
                           Notifier
@@ -557,6 +579,7 @@ export default function BulletinsPage() {
             <div className="px-6 py-4 border-t border-border flex flex-wrap items-center justify-end gap-3">
               <button
                 type="button"
+                disabled={!canBulletinNotify}
                 onClick={() => {
                   setWaContext(
                     buildBulletinWhatsAppContext({
@@ -568,7 +591,7 @@ export default function BulletinsPage() {
                     })
                   );
                 }}
-                className="px-4 py-2 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition font-medium"
+                className="px-4 py-2 bg-[#25D366]/15 hover:bg-[#25D366]/25 text-[#128C7E] rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Notifier parent (WhatsApp)
               </button>
@@ -581,8 +604,9 @@ export default function BulletinsPage() {
               </button>
               <button
                 type="button"
+                disabled={!canBulletinPdf}
                 onClick={() => void handleGeneratePDF(selectedStudent)}
-                className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium"
+                className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Télécharger PDF
               </button>

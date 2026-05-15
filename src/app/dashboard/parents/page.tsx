@@ -5,6 +5,8 @@ import { Plus, Search, Users, Phone, Mail, Edit, Trash2, FileSpreadsheet, Messag
 import FlashNotice from "@/components/FlashNotice";
 import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { buildManualWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import AddParentModal from "@/components/AddParentModal";
 import { createClient } from "@/lib/supabase/client";
@@ -31,6 +33,10 @@ export default function ParentsPage() {
   const [editingParent, setEditingParent] = useState<ParentRow | null>(null);
   const [waContext, setWaContext] = useState<WhatsAppNotifyContext | null>(null);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const role = profile?.role ?? null;
+  const canParentWrite = canDashboardAction(role, "parentWrite");
+  const canParentWhatsApp = canDashboardAction(role, "parentWhatsApp");
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -154,14 +160,16 @@ export default function ParentsPage() {
           <h1 className="text-2xl font-bold text-foreground">Parents / Tuteurs</h1>
           <p className="text-muted-foreground">Données Supabase</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium shadow-lg shadow-primary/20"
-        >
-          <Plus className="w-5 h-5" />
-          Ajouter un parent
-        </button>
+        {canParentWrite ? (
+          <button
+            type="button"
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-5 h-5" />
+            Ajouter un parent
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -268,29 +276,35 @@ export default function ParentsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setWaContext(
-                              buildManualWhatsAppContext({
-                                parentNomComplet: parent.nom,
-                                whatsapp: parent.telephone || null,
-                                sujet: "Information établissement",
-                                eleveOuEnfants:
-                                  parent.enfants.map((e) => `${e.nom} (${e.classe})`).join(", ") || "vos enfants",
-                              })
-                            )
-                          }
-                          className="p-2 rounded-lg text-[#128C7E]"
-                        >
-                          <MessageCircle className="w-4 h-4" />
-                        </button>
-                        <button type="button" onClick={() => setEditingParent(parent)} className="p-2 rounded-lg">
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button type="button" onClick={() => handleDeleteParent(parent.id)} className="p-2 rounded-lg">
-                          <Trash2 className="w-4 h-4 text-danger" />
-                        </button>
+                        {canParentWhatsApp ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setWaContext(
+                                buildManualWhatsAppContext({
+                                  parentNomComplet: parent.nom,
+                                  whatsapp: parent.telephone || null,
+                                  sujet: "Information établissement",
+                                  eleveOuEnfants:
+                                    parent.enfants.map((e) => `${e.nom} (${e.classe})`).join(", ") || "vos enfants",
+                                })
+                              )
+                            }
+                            className="p-2 rounded-lg text-[#128C7E]"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                        ) : null}
+                        {canParentWrite ? (
+                          <button type="button" onClick={() => setEditingParent(parent)} className="p-2 rounded-lg">
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        ) : null}
+                        {canParentWrite ? (
+                          <button type="button" onClick={() => handleDeleteParent(parent.id)} className="p-2 rounded-lg">
+                            <Trash2 className="w-4 h-4 text-danger" />
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

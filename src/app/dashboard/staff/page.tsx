@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, Search, Filter, Mail, Phone, Edit, Trash2, Eye, BookOpen, School, UserCheck } from "lucide-react";
 import FlashNotice from "@/components/FlashNotice";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { createClient } from "@/lib/supabase/client";
 import { embedOne } from "@/lib/supabase/embed";
 import AddStaffModal, { type LinkableProfileOption } from "@/components/AddStaffModal";
@@ -56,6 +58,9 @@ export default function StaffPage() {
   const [staffModalOpen, setStaffModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<StaffRow | null>(null);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const userRole = profile?.role ?? null;
+  const canStaffWrite = canDashboardAction(userRole, "staffWrite");
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -290,17 +295,19 @@ export default function StaffPage() {
           <h1 className="text-2xl font-bold text-foreground">Gestion du personnel</h1>
           <p className="text-muted-foreground">Table staff + profils Supabase</p>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            setEditingStaff(null);
-            setStaffModalOpen(true);
-          }}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg font-medium hover:bg-primary/90 shadow-lg shadow-primary/20"
-        >
-          <Plus className="w-5 h-5" />
-          Ajouter
-        </button>
+        {canStaffWrite ? (
+          <button
+            type="button"
+            onClick={() => {
+              setEditingStaff(null);
+              setStaffModalOpen(true);
+            }}
+            className="flex items-center gap-2 bg-primary text-white px-4 py-2.5 rounded-lg font-medium hover:bg-primary/90 shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-5 h-5" />
+            Ajouter
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -444,24 +451,28 @@ export default function StaffPage() {
                   <Eye className="w-4 h-4" />
                   Voir
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditingStaff(person);
-                    setStaffModalOpen(true);
-                  }}
-                  className="p-2 border border-input rounded-lg hover:bg-accent transition"
-                  title="Modifier"
-                >
-                  <Edit className="w-4 h-4 text-primary" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDeleteStaff(person.id)}
-                  className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
-                >
-                  <Trash2 className="w-4 h-4 text-danger" />
-                </button>
+                {canStaffWrite ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingStaff(person);
+                      setStaffModalOpen(true);
+                    }}
+                    className="p-2 border border-input rounded-lg hover:bg-accent transition"
+                    title="Modifier"
+                  >
+                    <Edit className="w-4 h-4 text-primary" />
+                  </button>
+                ) : null}
+                {canStaffWrite ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteStaff(person.id)}
+                    className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+                  >
+                    <Trash2 className="w-4 h-4 text-danger" />
+                  </button>
+                ) : null}
               </div>
             </div>
           ))

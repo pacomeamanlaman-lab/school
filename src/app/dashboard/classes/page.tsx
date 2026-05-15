@@ -6,6 +6,8 @@ import { Plus, Search, Users, User, Edit, Trash2, Eye } from "lucide-react";
 import AddClassModal from "@/components/AddClassModal";
 import FlashNotice from "@/components/FlashNotice";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { createClient } from "@/lib/supabase/client";
 import { embedOne } from "@/lib/supabase/embed";
 
@@ -34,6 +36,9 @@ export default function ClassesPage() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<ClasseRow | null>(null);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const role = profile?.role ?? null;
+  const canClasseWrite = canDashboardAction(role, "classeWrite");
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -227,14 +232,16 @@ export default function ClassesPage() {
           <h1 className="text-2xl font-bold text-foreground">Gestion des classes</h1>
           <p className="text-muted-foreground">Données Supabase</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
-        >
-          <Plus className="w-5 h-5" />
-          Créer une classe
-        </button>
+        {canClasseWrite ? (
+          <button
+            type="button"
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-5 h-5" />
+            Créer une classe
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -342,20 +349,24 @@ export default function ClassesPage() {
                     <Eye className="w-4 h-4" />
                     Voir
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingClass(classe)}
-                    className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
-                  >
-                    <Edit className="w-4 h-4 text-primary" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteClass(classe.id)}
-                    className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
-                  >
-                    <Trash2 className="w-4 h-4 text-danger" />
-                  </button>
+                  {canClasseWrite ? (
+                    <button
+                      type="button"
+                      onClick={() => setEditingClass(classe)}
+                      className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+                    >
+                      <Edit className="w-4 h-4 text-primary" />
+                    </button>
+                  ) : null}
+                  {canClasseWrite ? (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteClass(classe.id)}
+                      className="flex items-center justify-center p-2 hover:bg-accent border border-input rounded-lg transition"
+                    >
+                      <Trash2 className="w-4 h-4 text-danger" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
             );

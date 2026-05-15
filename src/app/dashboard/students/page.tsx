@@ -7,7 +7,9 @@ import AddStudentModal from "@/components/AddStudentModal";
 import FlashNotice from "@/components/FlashNotice";
 import { exportStudentsToExcel } from "@/utils/excelExport";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
 import { useStudents, type StudentWithClass } from "@/hooks/useStudents";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { createClient } from "@/lib/supabase/client";
 import {
   STUDENT_DOC_TYPE_BIRTH,
@@ -222,6 +224,12 @@ async function upsertParentForStudent(
 
 export default function StudentsPage() {
   const router = useRouter();
+  const { profile } = useDashboardProfile();
+  const role = profile?.role ?? null;
+  const canCreateStudent = canDashboardAction(role, "studentCreate");
+  const canWriteStudent = canDashboardAction(role, "studentWrite");
+  const canExportStudents = canDashboardAction(role, "studentExportExcel");
+
   const { students: dbStudents, loading, error, addStudent, updateStudent, deleteStudent, refresh } =
     useStudents();
   const [searchTerm, setSearchTerm] = useState("");
@@ -419,14 +427,16 @@ export default function StudentsPage() {
           <h1 className="text-2xl font-bold text-foreground">Gestion des élèves</h1>
           <p className="text-muted-foreground">Liste complète des élèves inscrits (Supabase)</p>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsAddModalOpen(true)}
-          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
-        >
-          <Plus className="w-5 h-5" />
-          Ajouter un élève
-        </button>
+        {canCreateStudent ? (
+          <button
+            type="button"
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white px-4 py-2.5 rounded-lg font-medium transition shadow-lg shadow-primary/20"
+          >
+            <Plus className="w-5 h-5" />
+            Ajouter un élève
+          </button>
+        ) : null}
       </div>
 
       {error ? (
@@ -467,8 +477,10 @@ export default function StudentsPage() {
 
           <button
             type="button"
+            disabled={!canExportStudents}
+            title={!canExportStudents ? "Export non autorisé pour votre rôle" : undefined}
             onClick={handleExportExcel}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <FileSpreadsheet className="w-4 h-4" />
             Exporter en Excel
@@ -564,25 +576,29 @@ export default function StudentsPage() {
                         >
                           <Eye className="w-4 h-4" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditingStudent({
-                              ...student,
-                              classe: student.classeId,
-                            })
-                          }
-                          className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteStudent(student.id)}
-                          className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {canWriteStudent ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setEditingStudent({
+                                ...student,
+                                classe: student.classeId,
+                              })
+                            }
+                            className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-primary"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        ) : null}
+                        {canWriteStudent ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteStudent(student.id)}
+                            className="p-2 hover:bg-accent rounded-lg transition text-muted-foreground hover:text-danger"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

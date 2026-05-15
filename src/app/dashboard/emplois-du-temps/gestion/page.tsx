@@ -12,6 +12,8 @@ import {
 } from "@/lib/timetable-tech-config";
 import FlashNotice from "@/components/FlashNotice";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { createClient } from "@/lib/supabase/client";
 import { fetchTimetableTechConfig } from "@/lib/supabase/etablissement-settings";
 import { dayDbFromLabel } from "@/lib/supabase/day-map";
@@ -50,6 +52,9 @@ export default function GestionEmploisDuTempsPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const userRole = profile?.role ?? null;
+  const canEdtWrite = canDashboardAction(userRole, "edtWrite");
 
   const selectedClassName = useMemo(
     () => classes.find((c) => c.id === selectedClasseId)?.name ?? "",
@@ -172,10 +177,15 @@ export default function GestionEmploisDuTempsPage() {
     }
   }, [copySourceDay, jours]);
 
+  useEffect(() => {
+    if (!canEdtWrite) setSelectedSlot(null);
+  }, [canEdtWrite]);
+
   const matiereNom = (id: string) => matieres.find((m) => m.id === id)?.nom ?? "";
   const enseignantLabel = (id: string) => enseignants.find((e) => e.id === id)?.label ?? "";
 
   const handleSlotClick = (jour: string, creneauId: number) => {
+    if (!canEdtWrite) return;
     const currentSlot = creneaux.find((slot) => slot.id === creneauId);
     if (!currentSlot || currentSlot.type !== "course" || isSlotDisabled(jour, creneauId)) {
       return;
@@ -198,6 +208,7 @@ export default function GestionEmploisDuTempsPage() {
   const checkConflicts = (): string[] => [];
 
   const handleSaveCours = () => {
+    if (!canEdtWrite) return;
     if (!selectedSlot || !formData.matiereId || !formData.enseignantId) {
       flash("Veuillez sélectionner une matière et un enseignant.", "error");
       return;
@@ -227,7 +238,7 @@ export default function GestionEmploisDuTempsPage() {
   };
 
   const handleDeleteCours = () => {
-    if (!selectedSlot) return;
+    if (!canEdtWrite || !selectedSlot) return;
     const newEmploiDuTemps = { ...emploiDuTemps };
     if (newEmploiDuTemps[selectedSlot.jour]) {
       const copy = { ...newEmploiDuTemps[selectedSlot.jour] };
@@ -240,6 +251,10 @@ export default function GestionEmploisDuTempsPage() {
   };
 
   const handleSaveEmploiDuTemps = async () => {
+    if (!canEdtWrite) {
+      flash("Modification de l’emploi du temps non autorisée pour votre rôle.", "error");
+      return;
+    }
     if (!selectedClasseId) return;
     const supabase = createClient();
     setSaving(true);
@@ -293,12 +308,14 @@ export default function GestionEmploisDuTempsPage() {
   };
 
   const handleResetGrid = () => {
+    if (!canEdtWrite) return;
     setEmploiDuTemps({});
     setSelectedSlot(null);
     setConflicts([]);
   };
 
   const handleCopyDayToWeek = () => {
+    if (!canEdtWrite) return;
     setEmploiDuTemps((prev) => {
       const source = prev[copySourceDay] ?? {};
       const next = cloneTimetable(prev);
@@ -342,7 +359,8 @@ export default function GestionEmploisDuTempsPage() {
         </div>
         <button
           type="button"
-          disabled={saving || !selectedClasseId}
+          disabled={!canEdtWrite || saving || !selectedClasseId}
+          title={!canEdtWrite ? "Modification réservée aux rôles autorisés" : undefined}
           onClick={() => void handleSaveEmploiDuTemps()}
           className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
         >
@@ -381,7 +399,8 @@ export default function GestionEmploisDuTempsPage() {
               <select
                 value={copySourceDay}
                 onChange={(e) => setCopySourceDay(e.target.value)}
-                className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none"
+                disabled={!canEdtWrite}
+                className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {jours.map((jour) => (
                   <option key={jour} value={jour}>
@@ -391,8 +410,9 @@ export default function GestionEmploisDuTempsPage() {
               </select>
               <button
                 type="button"
+                disabled={!canEdtWrite}
                 onClick={handleCopyDayToWeek}
-                className="inline-flex items-center gap-2 whitespace-nowrap px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium"
+                className="inline-flex items-center gap-2 whitespace-nowrap px-4 py-2.5 bg-background border border-input hover:bg-accent rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Copy className="w-4 h-4" />
                 Copier
@@ -410,8 +430,9 @@ export default function GestionEmploisDuTempsPage() {
             </button>
             <button
               type="button"
+              disabled={!canEdtWrite}
               onClick={handleResetGrid}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition font-medium"
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <RotateCcw className="w-4 h-4" />
               Vider la grille
@@ -473,16 +494,21 @@ export default function GestionEmploisDuTempsPage() {
                           </div>
                         ) : (
                           <div
-                            role="button"
-                            tabIndex={0}
+                            role={canEdtWrite ? "button" : undefined}
+                            tabIndex={canEdtWrite ? 0 : undefined}
                             onKeyDown={(e) => {
+                              if (!canEdtWrite) return;
                               if (e.key === "Enter" || e.key === " ") handleSlotClick(jour, creneau.id);
                             }}
-                            onClick={() => handleSlotClick(jour, creneau.id)}
-                            className={`p-3 rounded-lg border-2 cursor-pointer transition min-h-[80px] ${
+                            onClick={() => {
+                              if (canEdtWrite) handleSlotClick(jour, creneau.id);
+                            }}
+                            className={`p-3 rounded-lg border-2 transition min-h-[80px] ${
+                              canEdtWrite ? "cursor-pointer" : "cursor-default opacity-90"
+                            } ${
                               cours
-                                ? `${matiereColors[cours.matiere] || "bg-gray-100 border-gray-300"} hover:shadow-md`
-                                : "border-dashed border-muted-foreground/30 hover:border-primary hover:bg-primary/5"
+                                ? `${matiereColors[cours.matiere] || "bg-gray-100 border-gray-300"} ${canEdtWrite ? "hover:shadow-md" : ""}`
+                                : `border-dashed border-muted-foreground/30 ${canEdtWrite ? "hover:border-primary hover:bg-primary/5" : ""}`
                             }`}
                           >
                             {cours ? (
@@ -493,7 +519,7 @@ export default function GestionEmploisDuTempsPage() {
                               </>
                             ) : (
                               <div className="flex items-center justify-center h-full text-muted-foreground text-xs">
-                                + Ajouter cours
+                                {canEdtWrite ? "+ Ajouter cours" : "—"}
                               </div>
                             )}
                           </div>
@@ -536,7 +562,8 @@ export default function GestionEmploisDuTempsPage() {
                 <select
                   value={formData.matiereId}
                   onChange={(e) => setFormData({ ...formData, matiereId: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                  disabled={!canEdtWrite}
+                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">Sélectionner une matière</option>
                   {matieres.map((m) => (
@@ -554,7 +581,8 @@ export default function GestionEmploisDuTempsPage() {
                 <select
                   value={formData.enseignantId}
                   onChange={(e) => setFormData({ ...formData, enseignantId: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                  disabled={!canEdtWrite}
+                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <option value="">Sélectionner un enseignant</option>
                   {enseignants.map((e) => (
@@ -571,7 +599,8 @@ export default function GestionEmploisDuTempsPage() {
                   type="text"
                   value={formData.salle}
                   onChange={(e) => setFormData({ ...formData, salle: e.target.value })}
-                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition"
+                  disabled={!canEdtWrite}
+                  className="w-full px-4 py-2.5 bg-white border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition disabled:opacity-50 disabled:cursor-not-allowed"
                   placeholder="Salle 101"
                 />
               </div>
@@ -594,7 +623,7 @@ export default function GestionEmploisDuTempsPage() {
             </div>
 
             <div className="flex items-center justify-between gap-3 mt-6 pt-6 border-t border-border">
-              {emploiDuTemps[selectedSlot.jour]?.[selectedSlot.creneau] && (
+              {emploiDuTemps[selectedSlot.jour]?.[selectedSlot.creneau] && canEdtWrite && (
                 <button
                   type="button"
                   onClick={handleDeleteCours}
@@ -613,8 +642,9 @@ export default function GestionEmploisDuTempsPage() {
                 </button>
                 <button
                   type="button"
+                  disabled={!canEdtWrite}
                   onClick={handleSaveCours}
-                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium"
+                  className="px-4 py-2 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {emploiDuTemps[selectedSlot.jour]?.[selectedSlot.creneau] ? "Modifier" : "Ajouter"}
                 </button>

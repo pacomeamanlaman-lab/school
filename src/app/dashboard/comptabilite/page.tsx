@@ -5,6 +5,8 @@ import { Coins, Search, Filter, TrendingUp, TrendingDown, AlertCircle, Plus, Eye
 import AddPaiementModal, { type PaiementSubmitPayload } from "@/components/AddPaiementModal";
 import FlashNotice from "@/components/FlashNotice";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { createClient } from "@/lib/supabase/client";
 import { embedOne } from "@/lib/supabase/embed";
 
@@ -49,6 +51,9 @@ export default function ComptabilitePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const role = profile?.role ?? null;
+  const canCreatePaiement = canDashboardAction(role, "paiementCreate");
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -120,6 +125,7 @@ export default function ComptabilitePage() {
   }, [fraisScolaires]);
 
   const handleAddPaiement = (studentId: string) => {
+    if (!canCreatePaiement) return;
     const row = fraisScolaires.find((f) => f.studentId === studentId);
     if (row) {
       setSelectedStudent(row);
@@ -128,6 +134,10 @@ export default function ComptabilitePage() {
   };
 
   const handleSavePaiement = async (data: PaiementSubmitPayload) => {
+    if (!canCreatePaiement) {
+      flash("Enregistrement des paiements non autorisé pour votre rôle.", "error");
+      return;
+    }
     const supabase = createClient();
     const {
       data: { user },
@@ -365,8 +375,10 @@ export default function ComptabilitePage() {
                       <td className="px-6 py-4 text-right">
                         <button
                           type="button"
+                          disabled={!canCreatePaiement}
+                          title={!canCreatePaiement ? "Enregistrement des paiements non autorisé pour votre rôle" : undefined}
                           onClick={() => handleAddPaiement(frais.studentId)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <Plus className="w-4 h-4" />
                           Paiement

@@ -32,6 +32,38 @@
   color: #b91c1c;
   font-size: 0.82rem;
 }
+.demoAutofill {
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.5rem;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+}
+.demoAutofillHint {
+  margin: 0 0 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #3b82f6;
+}
+.demoSelect {
+  width: 100%;
+  border: 1px solid #93c5fd;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.85rem;
+  padding: 0.55rem 0.65rem;
+  outline: none;
+  cursor: pointer;
+}
+.demoSelect:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
+.demoSelect:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
 .form { display: grid; gap: 1rem; }
 .fieldLabel { display: block; margin-bottom: 0.45rem; color: #334155; font-size: 0.88rem; font-weight: 600; }
 .passwordHeader { display: flex; justify-content: space-between; align-items: center; }

@@ -15,6 +15,8 @@ import {
 import FlashNotice from "@/components/FlashNotice";
 import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { buildAbsenceWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { exportAbsencesToPDF } from "@/utils/pdfExport";
 import { exportAbsencesToExcel } from "@/utils/excelExport";
@@ -64,6 +66,10 @@ export default function AbsencesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const userRole = profile?.role ?? null;
+  const canAbsencesWrite = canDashboardAction(userRole, "absencesWrite");
+  const canAbsencesExport = canDashboardAction(userRole, "absencesExport");
 
   const selectedClassName = useMemo(
     () => classes.find((c) => c.id === selectedClasseId)?.name ?? "",
@@ -197,6 +203,7 @@ export default function AbsencesPage() {
   }, [selectedClasseId, selectedDate, loadStudentsAndCounts, loadDayAttendance]);
 
   const handleStatusChange = (studentId: string, status: AttendanceStatus) => {
+    if (!canAbsencesWrite) return;
     if (status === "absent") {
       setAttendanceBeforeMotifModal(attendance[studentId] ?? null);
     }
@@ -239,7 +246,7 @@ export default function AbsencesPage() {
   };
 
   const saveMotif = () => {
-    if (!showMotifModal) return;
+    if (!canAbsencesWrite || !showMotifModal) return;
     const cleanedMotif = motif.trim();
     if (!cleanedMotif) {
       setMotifError("Le motif est obligatoire pour enregistrer une absence justifiée.");
@@ -253,7 +260,7 @@ export default function AbsencesPage() {
   };
 
   const saveUnjustifiedAndEnableWhatsApp = () => {
-    if (!showMotifModal) return;
+    if (!canAbsencesWrite || !showMotifModal) return;
     setAttendance({
       ...attendance,
       [showMotifModal]: {
@@ -274,6 +281,10 @@ export default function AbsencesPage() {
   };
 
   const handleSaveAttendance = async () => {
+    if (!canAbsencesWrite) {
+      flash("Modification de l’appel réservée aux rôles autorisés.", "error");
+      return;
+    }
     if (!selectedClasseId) return;
     const supabase = createClient();
     const {
@@ -335,6 +346,10 @@ export default function AbsencesPage() {
   };
 
   const handleExportPDF = async () => {
+    if (!canAbsencesExport) {
+      flash("Export non autorisé pour votre rôle.", "error");
+      return;
+    }
     try {
       await exportAbsencesToPDF(selectedClassName || "Classe", selectedDate);
     } catch (e) {
@@ -344,6 +359,10 @@ export default function AbsencesPage() {
   };
 
   const handleExportExcel = () => {
+    if (!canAbsencesExport) {
+      flash("Export non autorisé pour votre rôle.", "error");
+      return;
+    }
     const studentsWithAttendance = students.map((student) => ({
       firstName: student.firstName,
       lastName: student.lastName,
@@ -406,16 +425,18 @@ export default function AbsencesPage() {
           <div className="flex items-end gap-3">
             <button
               type="button"
+              disabled={!canAbsencesExport}
               onClick={handleExportPDF}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Download className="w-4 h-4" />
               PDF
             </button>
             <button
               type="button"
+              disabled={!canAbsencesExport}
               onClick={handleExportExcel}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm"
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white hover:bg-gray-50 text-success rounded-lg transition font-medium border border-input shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FileSpreadsheet className="w-4 h-4" />
               Excel
@@ -450,7 +471,8 @@ export default function AbsencesPage() {
           </h3>
           <button
             type="button"
-            disabled={saving || !selectedClasseId}
+            disabled={!canAbsencesWrite || saving || !selectedClasseId}
+            title={!canAbsencesWrite ? "Modification de l’appel non autorisée pour votre rôle" : undefined}
             onClick={() => void handleSaveAttendance()}
             className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
           >
@@ -530,6 +552,7 @@ export default function AbsencesPage() {
                     )}
                     <button
                       type="button"
+                      disabled={!canAbsencesWrite}
                       onClick={() => handleStatusChange(student.id, "present")}
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
                         studentStatus === "present"
@@ -542,6 +565,7 @@ export default function AbsencesPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={!canAbsencesWrite}
                       onClick={() => handleStatusChange(student.id, "absent")}
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
                         studentStatus === "absent"
@@ -554,6 +578,7 @@ export default function AbsencesPage() {
                     </button>
                     <button
                       type="button"
+                      disabled={!canAbsencesWrite}
                       onClick={() => handleStatusChange(student.id, "late")}
                       className={`flex items-center gap-2 px-4 py-2 rounded-lg transition ${
                         studentStatus === "late"

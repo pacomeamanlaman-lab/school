@@ -23,6 +23,8 @@ import FlashNotice from "@/components/FlashNotice";
 import Modal from "@/components/Modal";
 import WhatsAppNotifyModal from "@/components/WhatsAppNotifyModal";
 import { useFlashNotice } from "@/hooks/useFlashNotice";
+import { useDashboardProfile } from "@/hooks/useDashboardProfile";
+import { canDashboardAction } from "@/lib/dashboard-action-policy";
 import { buildManualWhatsAppContext, type WhatsAppNotifyContext } from "@/lib/whatsapp-templates-mvp";
 import { createClient } from "@/lib/supabase/client";
 import { createStudentDocumentSignedUrl } from "@/lib/supabase/student-documents";
@@ -267,6 +269,9 @@ export default function StudentDetailPage() {
   const [docActionLoading, setDocActionLoading] = useState<string | null>(null);
   const [deletingStudent, setDeletingStudent] = useState(false);
   const { notice, flash } = useFlashNotice();
+  const { profile } = useDashboardProfile();
+  const role = profile?.role ?? null;
+  const canWriteStudent = canDashboardAction(role, "studentWrite");
 
   const refresh = useCallback(async () => {
     if (!id) {
@@ -285,7 +290,7 @@ export default function StudentDetailPage() {
   }, [refresh]);
 
   const handleDeleteStudent = async () => {
-    if (!vm) return;
+    if (!vm || !canWriteStudent) return;
     if (!confirm(`Supprimer définitivement ${vm.firstName} ${vm.lastName} ? Cette action est irréversible.`)) return;
     setDeletingStudent(true);
     const supabase = createClient();
@@ -408,17 +413,19 @@ export default function StudentDetailPage() {
           className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/90 text-white rounded-lg transition font-medium shadow-lg shadow-primary/20"
         >
           <Edit className="w-4 h-4" />
-          Liste / modifier
+          {canWriteStudent ? "Liste / modifier" : "Retour à la liste"}
         </button>
-        <button
-          type="button"
-          disabled={deletingStudent}
-          onClick={() => void handleDeleteStudent()}
-          className="flex items-center gap-2 px-4 py-2.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition font-medium disabled:opacity-50"
-        >
-          <Trash2 className="w-4 h-4" />
-          {deletingStudent ? "Suppression…" : "Supprimer"}
-        </button>
+        {canWriteStudent ? (
+          <button
+            type="button"
+            disabled={deletingStudent}
+            onClick={() => void handleDeleteStudent()}
+            className="flex items-center gap-2 px-4 py-2.5 bg-danger/10 hover:bg-danger/20 text-danger rounded-lg transition font-medium disabled:opacity-50"
+          >
+            <Trash2 className="w-4 h-4" />
+            {deletingStudent ? "Suppression…" : "Supprimer"}
+          </button>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
