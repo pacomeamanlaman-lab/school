@@ -31,7 +31,7 @@ export function useDashboardProfile() {
 
         const { data: row } = await supabase
           .from("profiles")
-          .select("role, first_name, last_name, email")
+          .select("role, first_name, last_name, email, status")
           .eq("id", user.id)
           .maybeSingle();
 
@@ -44,6 +44,13 @@ export function useDashboardProfile() {
             lastName: "",
             email: user.email ?? "",
           });
+          return;
+        }
+
+        const st = (row.status as string) ?? "active";
+        if (st !== "active") {
+          await supabase.auth.signOut();
+          window.location.replace("/login?reason=compte_inactif");
           return;
         }
 

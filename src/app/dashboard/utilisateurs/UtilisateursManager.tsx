@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Trash2 } from "lucide-react";
 import type { Database } from "@/lib/supabase/types";
 
 export type UtilisateurRow = {
@@ -47,45 +47,15 @@ const STATUS_LABEL_FR: Record<ProfileStatus, string> = {
   suspended: "Suspendu",
 };
 
-function roleLabel(role: string): string {
-  if (role in ROLE_LABEL_FR) return ROLE_LABEL_FR[role as ProfileRole];
-  return role;
-}
-
-function statusLabel(status: string): string {
-  if (status in STATUS_LABEL_FR) return STATUS_LABEL_FR[status as ProfileStatus];
-  return status;
-}
-
-function badgeRoleClass(role: string): string {
-  switch (role) {
-    case "super_admin":
-      return "bg-violet-500/15 text-violet-800 dark:text-violet-200";
-    case "admin":
-      return "bg-danger/10 text-danger";
-    case "enseignant":
-      return "bg-primary/10 text-primary";
-    case "secretaire":
-      return "bg-info/10 text-info";
-    case "comptable":
-      return "bg-amber-500/10 text-amber-800 dark:text-amber-200";
-    case "surveillant":
-      return "bg-emerald-500/10 text-emerald-800 dark:text-emerald-200";
-    case "parent":
-      return "bg-secondary/15 text-secondary";
-    case "eleve":
-      return "bg-muted text-muted-foreground";
-    default:
-      return "bg-muted text-muted-foreground";
-  }
-}
-
 type Props = {
   initialProfiles: UtilisateurRow[];
   loadError: string | null;
+  currentUserId: string;
 };
 
-export default function UtilisateursManager({ initialProfiles, loadError }: Props) {
+const STATUS_OPTIONS: readonly ProfileStatus[] = ["active", "inactive", "suspended"];
+
+export default function UtilisateursManager({ initialProfiles, loadError, currentUserId }: Props) {
   const router = useRouter();
   const [createEmail, setCreateEmail] = useState("");
   const [createFirst, setCreateFirst] = useState("");
@@ -95,7 +65,88 @@ export default function UtilisateursManager({ initialProfiles, loadError }: Prop
   const [tempPasswordConfirm, setTempPasswordConfirm] = useState("");
   const [showTempPassword, setShowTempPassword] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [banner, setBanner] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  const patchUser = async (id: string, body: { role?: ProfileRole; status?: ProfileStatus }): Promise<boolean> => {
+    setRowBusyId(id);
+    setBanner(null);
+    try {
+      const res = await fetch(`/api/admin/utilisateurs/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        setBanner({ type: "error", text: data.error ?? "Mise à jour impossible." });
+        return false;
+      }
+      router.refresh();
+      return true;
+    } catch {
+      setBanner({ type: "error", text: "Erreur réseau. Réessayez." });
+      return false;
+    } finally {
+      setRowBusyId(null);
+    }
+  };
+
+  const handleRoleChange = async (p: UtilisateurRow, el: HTMLSelectElement) => {
+    const next = el.value as ProfileRole;
+    if (next === p.role) return;
+    const label = ROLE_LABEL_FR[next];
+    if (!window.confirm(`Changer le rôle de ${p.first_name} ${p.last_name} en « ${label} » ?`)) {
+      el.value = p.role;
+      return;
+    }
+    const ok = await patchUser(p.id, { role: next });
+    if (!ok) el.value = p.role;
+  };
+
+  const handleStatusChange = async (p: UtilisateurRow, el: HTMLSelectElement) => {
+    const next = el.value as ProfileStatus;
+    if (next === p.status) return;
+    if (
+      !window.confirm(
+        `Modifier le statut de ${p.first_name} ${p.last_name} en « ${STATUS_LABEL_FR[next]} » ?`
+      )
+    ) {
+      el.value = p.status;
+      return;
+    }
+    const ok = await patchUser(p.id, { status: next });
+    if (!ok) el.value = p.status;
+  };
+
+  const handleDelete = (p: UtilisateurRow) => {
+    if (p.id === currentUserId) return;
+    if (
+      !window.confirm(
+        `Supprimer définitivement le compte de ${p.first_name} ${p.last_name} (${p.email}) ? Cette action est irréversible.`
+      )
+    ) {
+      return;
+    }
+    void (async () => {
+      setRowBusyId(p.id);
+      setBanner(null);
+      try {
+        const res = await fetch(`/api/admin/utilisateurs/${p.id}`, { method: "DELETE" });
+        const data = (await res.json()) as { error?: string };
+        if (!res.ok) {
+          setBanner({ type: "error", text: data.error ?? "Suppression impossible." });
+          return;
+        }
+        setBanner({ type: "success", text: "Compte supprimé." });
+        router.refresh();
+      } catch {
+        setBanner({ type: "error", text: "Erreur réseau. Réessayez." });
+      } finally {
+        setRowBusyId(null);
+      }
+    })();
+  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -270,43 +321,85 @@ export default function UtilisateursManager({ initialProfiles, loadError }: Prop
       <section>
         <h2 className="text-lg font-semibold text-foreground mb-4">Comptes ({initialProfiles.length})</h2>
         <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-          <table className="w-full text-sm">
+          <table className="w-full text-sm min-w-[720px]">
             <thead>
               <tr className="border-b border-border bg-muted/50 text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Nom</th>
-                <th className="px-4 py-3 font-medium">E-mail</th>
-                <th className="px-4 py-3 font-medium">Rôle</th>
-                <th className="px-4 py-3 font-medium">Statut</th>
-                <th className="px-4 py-3 font-medium hidden lg:table-cell">Créé le</th>
+                <th className="px-3 py-3 font-medium">Nom</th>
+                <th className="px-3 py-3 font-medium">E-mail</th>
+                <th className="px-3 py-3 font-medium w-[11rem]">Rôle</th>
+                <th className="px-3 py-3 font-medium w-[9rem]">Statut</th>
+                <th className="px-3 py-3 font-medium hidden lg:table-cell w-[7rem]">Créé le</th>
+                <th className="px-3 py-3 font-medium text-right w-[4.5rem]">Actions</th>
               </tr>
             </thead>
             <tbody>
               {initialProfiles.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     Aucun profil.
                   </td>
                 </tr>
               ) : (
-                initialProfiles.map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                    <td className="px-4 py-3 font-medium text-foreground">
-                      {p.first_name} {p.last_name}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{p.email}</td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ${badgeRoleClass(p.role)}`}
-                      >
-                        {roleLabel(p.role)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-foreground">{statusLabel(p.status)}</td>
-                    <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
-                      {p.created_at ? new Date(p.created_at).toLocaleDateString("fr-FR") : "—"}
-                    </td>
-                  </tr>
-                ))
+                initialProfiles.map((p) => {
+                  const busy = rowBusyId === p.id;
+                  const isSelf = p.id === currentUserId;
+                  const roleOk = (ROLE_OPTIONS as readonly string[]).includes(p.role);
+                  return (
+                    <tr key={p.id} className="border-b border-border last:border-0 hover:bg-muted/30">
+                      <td className="px-3 py-3 font-medium text-foreground whitespace-nowrap">
+                        {p.first_name} {p.last_name}
+                      </td>
+                      <td className="px-3 py-3 text-muted-foreground max-w-[14rem] truncate" title={p.email}>
+                        {p.email}
+                      </td>
+                      <td className="px-3 py-3">
+                        <select
+                          className="w-full max-w-[10.5rem] px-2 py-1.5 text-xs bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                          value={roleOk ? p.role : "enseignant"}
+                          disabled={busy || isSelf}
+                          title={isSelf ? "Vous ne pouvez pas modifier votre propre rôle ici" : undefined}
+                          onChange={(e) => void handleRoleChange(p, e.target)}
+                        >
+                          {ROLE_OPTIONS.map((r) => (
+                            <option key={r} value={r}>
+                              {ROLE_LABEL_FR[r]}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-3 py-3">
+                        <select
+                          className="w-full max-w-[8.5rem] px-2 py-1.5 text-xs bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+                          value={(STATUS_OPTIONS as readonly string[]).includes(p.status) ? p.status : "active"}
+                          disabled={busy || isSelf}
+                          title={isSelf ? "Utilisez un autre compte super admin pour modifier votre statut" : undefined}
+                          onChange={(e) => void handleStatusChange(p, e.target)}
+                        >
+                          {STATUS_OPTIONS.map((s) => (
+                            <option key={s} value={s}>
+                              {STATUS_LABEL_FR[s]}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="px-3 py-3 text-muted-foreground hidden lg:table-cell whitespace-nowrap">
+                        {p.created_at ? new Date(p.created_at).toLocaleDateString("fr-FR") : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        <button
+                          type="button"
+                          disabled={busy || isSelf}
+                          title={isSelf ? "Impossible de supprimer votre propre compte" : "Supprimer le compte"}
+                          onClick={() => handleDelete(p)}
+                          className="inline-flex items-center justify-center p-2 rounded-lg text-danger hover:bg-danger/10 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                        >
+                          <Trash2 className="w-4 h-4" aria-hidden />
+                          <span className="sr-only">Supprimer</span>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

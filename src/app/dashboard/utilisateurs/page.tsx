@@ -37,7 +37,11 @@ export default async function UtilisateursPage() {
           Création des comptes (mot de passe temporaire) et liste des profils — réservé au super administrateur.
         </p>
       </div>
-      <UtilisateursManager initialProfiles={initialProfiles} loadError={error?.message ?? null} />
+      <UtilisateursManager
+        initialProfiles={initialProfiles}
+        loadError={error?.message ?? null}
+        currentUserId={user.id}
+      />
     </div>
   );
 }

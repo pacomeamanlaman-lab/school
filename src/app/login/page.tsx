@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Eye, EyeOff, GraduationCap, Lock, Mail } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -21,6 +21,15 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("reason") === "compte_inactif") {
+      setErrorMessage("Votre compte est inactif ou suspendu. Contactez l’administration.");
+      window.history.replaceState({}, "", "/login");
+    }
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -47,7 +56,24 @@ export default function LoginPage() {
       const {
         data: { user: signedIn },
       } = await supabase.auth.getUser();
-      const meta = signedIn?.app_metadata as Record<string, unknown> | undefined;
+      if (!signedIn) {
+        setErrorMessage("Session introuvable après connexion.");
+        setIsLoading(false);
+        return;
+      }
+
+      const { data: profileRow } = await supabase.from("profiles").select("status").eq("id", signedIn.id).maybeSingle();
+      const st = (profileRow?.status as string | undefined) ?? "active";
+      if (st !== "active") {
+        await supabase.auth.signOut();
+        setErrorMessage(
+          st === "suspended" ? "Ce compte est suspendu. Contactez l’administration." : "Ce compte est inactif. Contactez l’administration."
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      const meta = signedIn.app_metadata as Record<string, unknown> | undefined;
       const mustChange = meta?.must_change_password === true;
 
       // Navigation pleine page : le loader reste affiché jusqu’au déchargement de cette page
